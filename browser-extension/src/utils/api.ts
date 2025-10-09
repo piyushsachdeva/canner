@@ -8,6 +8,8 @@ export interface Response {
   content: string;
   tags?: string[];
   created_at?: string;
+  usage_count?: number;
+  custom_order?: number;
 }
 
 // Try backend first, fall back to Chrome storage
@@ -44,7 +46,7 @@ export async function saveResponse(response: Response): Promise<Response> {
 
     if (result.ok) {
       const saved = await result.json();
-      // Update Chrome storage
+      // Cache in Chrome storage
       const responses = await getResponses();
       responses.push(saved);
       chrome.storage.local.set({ responses });
@@ -60,6 +62,8 @@ export async function saveResponse(response: Response): Promise<Response> {
     ...response,
     id,
     created_at: new Date().toISOString(),
+    usage_count: response.usage_count || 0,
+    custom_order: response.custom_order || 0,
   };
 
   return new Promise((resolve) => {
@@ -99,6 +103,47 @@ export async function deleteResponse(id: string): Promise<void> {
       chrome.storage.local.set({ responses: filtered }, () => {
         resolve();
       });
+    });
+  });
+}
+
+export async function updateResponse(id: string, updates: Partial<Response>): Promise<Response> {
+  try {
+    // Try backend
+    const result = await fetch(`${API_URL}/api/responses/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+
+    if (result.ok) {
+      const updated = await result.json();
+      // Update Chrome storage
+      const responses = await getResponses();
+      const index = responses.findIndex(r => r.id === id);
+      if (index !== -1) {
+        responses[index] = updated;
+        chrome.storage.local.set({ responses });
+      }
+      return updated;
+    }
+  } catch (error) {
+    console.log("Backend not available, updating local storage");
+  }
+
+  // Fallback to Chrome storage
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["responses"], (result) => {
+      const responses = result.responses || [];
+      const index = responses.findIndex((r: Response) => r.id === id);
+      if (index !== -1) {
+        responses[index] = { ...responses[index], ...updates };
+        chrome.storage.local.set({ responses }, () => {
+          resolve(responses[index]);
+        });
+      } else {
+        throw new Error("Response not found");
+      }
     });
   });
 }

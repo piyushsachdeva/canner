@@ -3,8 +3,11 @@ import {
   getResponses,
   saveResponse,
   deleteResponse,
+  updateResponse,
   Response,
 } from "../utils/api";
+
+type SortOption = "date" | "alphabetical" | "most-used" | "custom";
 
 function App() {
   const [responses, setResponses] = useState<Response[]>([]);
@@ -12,6 +15,9 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showNewForm, setShowNewForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<SortOption>(() => {
+    return (localStorage.getItem('canner-sort-by') as SortOption) || 'date';
+  });
 
   // New response form state
   const [newTitle, setNewTitle] = useState("");
@@ -23,15 +29,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    filterResponses();
-  }, [searchQuery, responses]);
+    filterAndSortResponses();
+  }, [searchQuery, responses, sortBy]);
 
   const loadResponses = async () => {
     try {
       setLoading(true);
       const data = await getResponses();
       setResponses(data);
-      setFilteredResponses(data);
     } catch (error) {
       console.error("Error loading responses:", error);
     } finally {
@@ -39,20 +44,48 @@ function App() {
     }
   };
 
-  const filterResponses = () => {
-    if (!searchQuery.trim()) {
-      setFilteredResponses(responses);
-      return;
+  const filterAndSortResponses = () => {
+    let filtered = responses;
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = responses.filter(
+        (r) =>
+          r.title.toLowerCase().includes(query) ||
+          r.content.toLowerCase().includes(query) ||
+          r.tags?.some((tag) => tag.toLowerCase().includes(query))
+      );
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = responses.filter(
-      (r) =>
-        r.title.toLowerCase().includes(query) ||
-        r.content.toLowerCase().includes(query) ||
-        r.tags?.some((tag) => tag.toLowerCase().includes(query))
-    );
-    setFilteredResponses(filtered);
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case "date":
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA;
+
+        case "alphabetical":
+          return a.title.localeCompare(b.title);
+
+        case "most-used":
+          const usageA = a.usage_count || 0;
+          const usageB = b.usage_count || 0;
+          if (usageA !== usageB) {
+            return usageB - usageA;
+          }
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+
+        case "custom":
+          const orderA = a.custom_order || 0;
+          const orderB = b.custom_order || 0;
+          return orderA - orderB;
+
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredResponses(sorted);
   };
 
   const handleSaveNew = async () => {
@@ -74,7 +107,6 @@ function App() {
       await saveResponse(newResponse);
       await loadResponses();
 
-      // Reset form
       setNewTitle("");
       setNewContent("");
       setNewTags("");
@@ -99,7 +131,15 @@ function App() {
 
   const handleInsert = async (response: Response) => {
     try {
-      // Send message to content script to insert the response
+      if (response.id) {
+        const newUsageCount = (response.usage_count || 0) + 1;
+        await updateResponse(response.id, { usage_count: newUsageCount });
+
+        setResponses(prev => prev.map(r => 
+          r.id === response.id ? { ...r, usage_count: newUsageCount } : r
+        ));
+      }
+
       const [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
@@ -113,7 +153,7 @@ function App() {
           },
           (response) => {
             if (response?.success) {
-              window.close(); // Close popup after successful insertion
+              window.close();
             } else {
               alert("Please click on a LinkedIn message box first");
             }
@@ -139,6 +179,20 @@ function App() {
       </header>
 
       <div className="popup-content">
+        <div className="sort-section">
+          <label className="sort-label">Sort by:</label>
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value as SortOption)}
+            className="sort-select"
+          >
+            <option value="date">📅 Date Created</option>
+            <option value="alphabetical">🔤 Alphabetical</option>
+            <option value="most-used">📈 Most Used</option>
+            <option value="custom">🎯 Custom Order</option>
+          </select>
+        </div>
+
         {/* Search Bar */}
         <div className="search-section">
           <input

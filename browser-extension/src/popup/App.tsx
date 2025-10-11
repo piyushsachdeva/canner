@@ -5,6 +5,7 @@ import {
   deleteResponse,
   Response,
 } from "../utils/api";
+import { FaSpinner } from "react-icons/fa";
 
 function App() {
   const [responses, setResponses] = useState<Response[]>([]);
@@ -12,7 +13,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showNewForm, setShowNewForm] = useState(false);
   const [loading, setLoading] = useState(true);
-
+  const [saving, setSaving] = useState(false);
   // New response form state
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
@@ -58,34 +59,38 @@ function App() {
   };
 
   const handleSaveNew = async () => {
-    if (!newTitle.trim() || !newContent.trim()) {
-      alert("Please enter both title and content");
-      return;
-    }
+  if (!newTitle.trim() || !newContent.trim()) {
+    alert("Please enter both title and content");
+    return;
+  }
 
-    try {
-      const newResponse: Response = {
-        title: newTitle.trim(),
-        content: newContent.trim(),
-        tags: newTags
-          .split(",")
-          .map((t) => t.trim())
-          .filter((t) => t),
-      };
+  setSaving(true); // Start spinner
 
-      await saveResponse(newResponse);
-      await loadResponses();
+  try {
+    const newResponse = {
+      title: newTitle.trim(),
+      content: newContent.trim(),
+      tags: newTags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t),
+    };
 
-      // Reset form
-      setNewTitle("");
-      setNewContent("");
-      setNewTags("");
-      setShowNewForm(false);
-    } catch (error) {
-      console.error("Error saving response:", error);
-      alert("Failed to save response");
-    }
-  };
+    await saveResponse(newResponse);
+    await loadResponses();
+
+    // Reset form
+    setNewTitle("");
+    setNewContent("");
+    setNewTags("");
+    setShowNewForm(false);
+  } catch (error) {
+    console.error("Error saving response:", error);
+    alert("Failed to save response");
+  } finally {
+    setSaving(false); // ✅ Always stop spinner
+  }
+};
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this response?")) {
@@ -182,16 +187,32 @@ function App() {
               onChange={(e) => setNewTags(e.target.value)}
               className="form-input"
             />
-            <button onClick={handleSaveNew} className="btn-save">
-              Save Response
-            </button>
+           <button onClick={handleSaveNew} className="btn-save" disabled={saving}>
+            {saving ? (
+            <FaSpinner className="spinner-icon" />
+             ) : (
+              "Save Response"
+                 )}
+             </button>
           </div>
         )}
 
         {/* Responses List */}
         <div className="responses-list">
           {loading ? (
-            <div className="loading">Loading...</div>
+             <div className="skeleton-container">
+      {[1, 2, 3].map((n) => (
+        <div key={n} className="skeleton-card">
+          <div className="skeleton-title"></div>
+          <div className="skeleton-line"></div>
+          <div className="skeleton-line short"></div>
+          <div className="skeleton-tags">
+            <div className="skeleton-tag"></div>
+            <div className="skeleton-tag"></div>
+          </div>
+        </div>
+      ))}
+    </div>
           ) : filteredResponses.length === 0 ? (
             <div className="empty">
               <p>📭 No responses found</p>

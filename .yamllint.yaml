@@ -1,0 +1,53 @@
+---
+# yamllint configuration
+# https://yamllint.readthedocs.io/
+
+extends: default
+
+rules:
+  # Line length - set to 120 for better readability
+  line-length:
+    max: 120
+    level: warning
+
+  # Allow multiple spaces for alignment
+  colons:
+    max-spaces-after: 1
+
+  # Indentation - 2 spaces
+  indentation:
+    spaces: 2
+    indent-sequences: true
+
+  # Comments - require space after #
+  comments:
+    min-spaces-from-content: 2
+
+  # Document start - require ---
+  document-start:
+    present: true
+
+  # Truthy values - allow yes/no, true/false, on/off
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    check-keys: false
+
+  # Empty lines
+  empty-lines:
+    max: 2
+
+  # Trailing spaces
+  trailing-spaces: enable
+
+  # New line at end of file
+  new-line-at-end-of-file: enable
+
+ignore: |
+  node_modules/
+  .venv/
+  venv/
+  env/
+  myenv/
+  __pycache__/
+  dist/
+  build/

@@ -5,7 +5,9 @@
   "scripts": {
     "build": "webpack --mode production",
     "dev": "webpack --mode development --watch",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "lint:check": "eslint src --ext .ts,.tsx --max-warnings 0"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -21,6 +23,8 @@
     "copy-webpack-plugin": "^11.0.0",
     "css-loader": "^6.8.1",
     "eslint": "^8.55.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
     "html-webpack-plugin": "^5.5.4",
     "style-loader": "^3.3.3",
     "ts-loader": "^9.5.1",

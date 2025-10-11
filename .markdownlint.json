@@ -1,0 +1,37 @@
+{
+  "default": true,
+  "MD003": false,
+  "MD007": {
+    "indent": 2
+  },
+  "MD013": {
+    "line_length": 120,
+    "heading_line_length": 120,
+    "code_block_line_length": 120,
+    "tables": false
+  },
+  "MD024": {
+    "allow_different_nesting": true
+  },
+  "MD029": {
+    "style": "ordered"
+  },
+  "MD033": {
+    "allowed_elements": [
+      "br",
+      "details",
+      "summary",
+      "img",
+      "a",
+      "div",
+      "span",
+      "kbd",
+      "sub",
+      "sup"
+    ]
+  },
+  "MD041": false,
+  "MD046": {
+    "style": "fenced"
+  }
+}

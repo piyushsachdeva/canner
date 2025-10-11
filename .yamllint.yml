@@ -1,0 +1,60 @@
+---
+# YAML linting configuration - moderate strictness
+rules:
+  # Line length - be reasonable but not too strict
+  line-length:
+    max: 120
+    level: error
+
+  # Indentation - consistent spacing
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Document formatting
+  document-start:
+    present: false # Don't require --- at start
+  document-end:
+    present: false # Don't require ... at end
+
+  # Comments
+  comments:
+    min-spaces-from-content: 1
+    require-starting-space: true
+
+  # Empty lines
+  empty-lines:
+    max: 2
+    max-start: 1
+    max-end: 1
+
+  # Brackets and braces
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Trailing spaces
+  trailing-spaces: enable
+
+  # Key duplicates
+  key-duplicates: enable
+
+  # Truthy values - be flexible
+  truthy:
+    allowed-values: ["true", "false", "yes", "no"]
+    check-keys: false
+
+# File patterns to check
+extends: default
+
+# Ignore patterns
+ignore: |
+  /.github/
+  /node_modules/
+  /.git/
+  /dist/
+  /build/

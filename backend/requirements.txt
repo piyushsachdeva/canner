@@ -3,3 +3,14 @@ flask-cors==4.0.0
 Werkzeug==3.0.1
 psycopg2-binary==2.9.9
 python-dotenv==1.0.0
+# Flask stack
+Flask==3.0.0
+flask-cors==4.0.0
+Werkzeug==3.0.1
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+
+# Transformers and sentence-transformers
+transformers==4.57.0
+sentence-transformers==2.2.2
+torch==2.8.0

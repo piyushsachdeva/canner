@@ -1,0 +1,30 @@
+---
+# Hadolint configuration for Dockerfile linting
+# https://github.com/hadolint/hadolint
+
+ignored:
+  # DL3008: Pin versions in apt-get install
+  # We use slim images and package versions are managed by base image
+  - DL3008
+
+  # DL3009: Delete apt-get lists after installing
+  # Already handled in our Dockerfiles with rm -rf
+  - DL3009
+
+trustedRegistries:
+  - docker.io
+  - python
+  - postgres
+  - dpage
+
+# Disable specific rules for specific files if needed
+# override:
+#   error:
+#     - DL3001
+#   warning:
+#     - DL3042
+#   info:
+#     - DL3032
+
+# Strict mode - fail on warnings
+# failure-threshold: warning

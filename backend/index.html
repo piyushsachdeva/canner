@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canner API - Navigation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .link-card {
+            display: block;
+            padding: 20px;
+            margin: 15px 0;
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #495057;
+            transition: all 0.3s ease;
+        }
+        .link-card:hover {
+            border-color: #007bff;
+            background: #e7f3ff;
+            transform: translateY(-2px);
+        }
+        .link-title {
+            font-weight: 600;
+            font-size: 18px;
+            color: #007bff;
+            margin-bottom: 8px;
+        }
+        .link-description {
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .status {
+            padding: 20px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .status h3 {
+            color: #155724;
+            margin: 0 0 10px 0;
+        }
+        .code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Canner API Documentation</h1>
+        
+        <div class="status">
+            <h3>✅ Server Status: Running</h3>
+            <p>The Swagger-enabled API server is running on port 5001</p>
+        </div>
+
+        <a href="/docs/" class="link-card">
+            <div class="link-title">📚 Interactive API Documentation (Swagger UI)</div>
+            <div class="link-description">
+                Complete interactive documentation with try-it-out functionality for all endpoints
+            </div>
+        </a>
+
+        <a href="/api/health" class="link-card">
+            <div class="link-title">🔍 Health Check</div>
+            <div class="link-description">
+                Check API and database connectivity status
+            </div>
+        </a>
+
+        <a href="/api/responses" class="link-card">
+            <div class="link-title">📝 API Responses Endpoint</div>
+            <div class="link-description">
+                View all response templates (JSON format)
+            </div>
+        </a>
+
+        <div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+            <h3>🧪 Testing Commands</h3>
+            <p>You can also test the API using these curl commands:</p>
+            <div style="font-family: monospace; font-size: 12px; margin: 10px 0;">
+                <div style="margin: 5px 0;"><span class="code">curl http://localhost:5001/api/health</span></div>
+                <div style="margin: 5px 0;"><span class="code">curl http://localhost:5001/api/responses</span></div>
+                <div style="margin: 5px 0;"><span class="code">python3 test_api.py</span></div>
+            </div>
+        </div>
+
+        <div style="margin-top: 30px; text-align: center; color: #6c757d; font-size: 14px;">
+            <p>🎉 GitHub Issue #52 - Swagger UI API Documentation - <strong>COMPLETED</strong></p>
+        </div>
+    </div>
+</body>
+</html>

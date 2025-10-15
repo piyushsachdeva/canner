@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import sqlite3
 import json
 import os
@@ -21,6 +23,15 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+
+# Initialize rate limiter
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["1000 per day", "200 per hour"],  # Global default limits
+    storage_uri="memory://",  # In-memory storage (change to redis://localhost:6379 for production)
+    strategy="fixed-window",  # Can be changed to "moving-window" for more accuracy
+)
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///responses.db')
@@ -180,6 +191,7 @@ def dict_from_row(row) -> Dict[str, Any]:
 
 
 @app.route('/api/responses', methods=['GET'])
+@limiter.limit("200 per hour")  # Read operations - moderate limit to prevent scraping
 def get_responses():
     """Get all responses, optionally filtered by search query."""
     search = request.args.get('search', '')
@@ -215,6 +227,7 @@ def get_responses():
 
 
 @app.route('/api/responses/<response_id>', methods=['GET'])
+@limiter.limit("50 per hour")  # Single read - higher limit, less expensive
 def get_response(response_id: str):
     """Get a single response by ID."""
     conn = get_db_connection()
@@ -237,6 +250,7 @@ def get_response(response_id: str):
 
 
 @app.route('/api/responses', methods=['POST'])
+@limiter.limit("50 per hour")  # Write operations - strict limit as specified
 def create_response():
     """Create a new response."""
     data = request.get_json()
@@ -278,6 +292,7 @@ def create_response():
 
 
 @app.route('/api/responses/<response_id>', methods=['PUT'])
+@limiter.limit("50 per hour")  # Update operations - moderate limit
 def update_response(response_id: str):
     """Update an existing response."""
     data = request.get_json()
@@ -345,6 +360,7 @@ def update_response(response_id: str):
 
 
 @app.route('/api/responses/<response_id>', methods=['DELETE'])
+@limiter.limit("30 per hour")  # Delete operations - strict limit, destructive action
 def delete_response(response_id: str):
     """Delete a response."""
     conn = get_db_connection()
@@ -371,6 +387,7 @@ def delete_response(response_id: str):
 
 
 @app.route('/api/health', methods=['GET'])
+@limiter.exempt  # Health checks should not be rate limited
 def health_check():
     """Health check endpoint with database connectivity test."""
     try:
@@ -401,6 +418,17 @@ def health_check():
         }), 503
 
 
+# Custom error handler for rate limit exceeded
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Custom handler for rate limit errors."""
+    return jsonify({
+        'error': 'Rate limit exceeded',
+        'message': 'Too many requests. Please try again later.',
+        'retry_after': e.description
+    }), 429
+
+
 if __name__ == '__main__':
     # Configure logging
     logging.basicConfig(
@@ -418,6 +446,13 @@ if __name__ == '__main__':
         init_db()
         
         logging.info('🚀 Starting Flask server on http://0.0.0.0:5000')
+        logging.info('🛡️  Rate limiting enabled:')
+        logging.info('   • POST /api/responses: 50 per hour')
+        logging.info('   • PUT /api/responses/<id>: 50 per hour')
+        logging.info('   • DELETE /api/responses/<id>: 30 per hour')
+        logging.info('   • GET /api/responses: 200 per hour')
+        logging.info('   • GET /api/responses/<id>: 50 per hour')
+        
         app.run(debug=True, host='0.0.0.0', port=5000)
         
     except Exception as e:

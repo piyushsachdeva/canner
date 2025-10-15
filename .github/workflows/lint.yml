@@ -1,0 +1,95 @@
+name: 🔍 Lint Code
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-frontend:
+    name: 🔧 Lint Frontend (TypeScript/JavaScript)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: "browser-extension/package-lock.json"
+
+      - name: 📚 Install dependencies
+        working-directory: browser-extension
+        run: npm ci
+
+      - name: 🔍 Run ESLint
+        working-directory: browser-extension
+        run: npm run lint
+
+  lint-backend:
+    name: 🐍 Lint Backend (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 📚 Install Python linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort
+
+      - name: 🔍 Run flake8 (Style Guide Enforcement)
+        run: |
+          flake8 backend --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 backend --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+
+      - name: 🎨 Check code formatting with black
+        run: black --check --diff backend
+
+      - name: 📦 Check import sorting with isort
+        run: isort --check-only --diff backend
+
+  lint-configs:
+    name: 📝 Lint Configuration Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js (for markdownlint)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: 🐍 Setup Python (for yamllint)
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: 📚 Install linting tools
+        run: |
+          # YAML linting
+          pip install yamllint
+          # Markdown linting
+          npm install -g markdownlint-cli
+
+      - name: 🔧 Lint YAML files
+        run: yamllint -c .yamllint.yml .
+
+      - name: 📋 Lint Markdown files
+        run: markdownlint "**/*.md" --config .markdownlint.json --ignore node_modules
+
+      - name: 🐳 Lint Dockerfiles
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          recursive: true
+          failure-threshold: error

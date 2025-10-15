@@ -1,0 +1,42 @@
+[flake8]
+# Moderate strictness configuration
+max-line-length = 88
+max-complexity = 10
+
+# Select specific error codes to check
+# E - pycodestyle errors
+# W - pycodestyle warnings  
+# F - pyflakes
+# C - mccabe complexity
+select = E,W,F,C
+
+# Ignore some less critical issues for moderate strictness
+# E203 - whitespace before ':' (conflicts with black)
+# E501 - line too long (handled by black)
+# W503 - line break before binary operator (conflicts with black)
+# E402 - module level import not at top of file (common in Flask apps)
+ignore = E203,E501,W503,E402
+
+# Exclude common directories
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    myenv,
+    env,
+    .env,
+    build,
+    dist,
+    .tox,
+    .pytest_cache,
+    *.egg-info
+
+# Show source code for each error
+show-source = True
+
+# Count errors
+count = True
+
+# Display which tool is being used
+verbose = 1

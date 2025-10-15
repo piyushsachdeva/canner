@@ -5,7 +5,7 @@ import sqlite3
 import json
 from typing import List, Optional
 from models import Response
-
+from datetime import datetime
 DATABASE = 'responses.db'
 
 
@@ -14,9 +14,13 @@ class DatabaseService:
     
     @staticmethod
     def get_connection():
-        """Get database connection."""
+        """Get database connection with connection logging."""
         conn = sqlite3.connect(DATABASE)
         conn.row_factory = sqlite3.Row
+
+        # ✅ Tiny functional improvement: log database connection creation
+        print(f"[{datetime.now().isoformat()}] ✅ Database connection opened: {DATABASE}")
+
         return conn
     
     @staticmethod

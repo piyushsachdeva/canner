@@ -1,11 +1,12 @@
 // Canner Content Script
 // Injects helper buttons and features into LinkedIn pages
+import { toBold, toItalic, toBoldItalic, toRegular, hasFormatting } from '../utils/textFormatter';
 
 console.log("Canner: Content script loaded");
 
 // Configuration
 const CONFIG = {
-  API_URL: "http://localhost:5000",
+  API_URL: "http://localhost:5000/api",
   BUTTON_ICON: "💬",
   BUTTON_COLOR: "#0a66c2", // LinkedIn blue
 };
@@ -119,9 +120,14 @@ function addMessageHelpers() {
     const penButton = createPenButton(box as HTMLElement);
     positionPenButton(box as HTMLElement, penButton);
 
+   
+
+    const composeButton = createComposeButton(box as HTMLElement);
+positionComposeButton(box as HTMLElement, composeButton);
+
     injectedElements.add(box.id);
     console.log(
-      `Social Helper: Pen button created and positioned for element ${
+      `Social Helper: Pen button and formatting toolbar created for element ${
         index + 1
       }`
     );
@@ -152,7 +158,7 @@ function createPenButton(targetBox: HTMLElement): HTMLElement {
 
   penContainer.innerHTML = `
     <div class="pen-icon">✏️</div>
-    <div class="pen-tooltip">Quick Response</div>
+    
   `;
   penContainer.title = "Click for quick responses (Ctrl+Shift+L)";
 
@@ -174,10 +180,252 @@ function createPenButton(targetBox: HTMLElement): HTMLElement {
   penContainer.addEventListener("mouseleave", () => {
     hoverTimeout = window.setTimeout(() => {
       penContainer.classList.remove("pen-hover");
-    }, 200); // Slightly faster hide for better UX
+    }, 200);
   });
 
   return penContainer;
+}
+
+
+
+// Apply formatting to selected text or entire content
+function applyFormatting(box: HTMLElement, format: string) {
+  const selection = window.getSelection();
+  const selectedText = selection?.toString();
+
+  // If text is selected, format only the selection
+  if (selectedText && selectedText.length > 0) {
+    formatSelectedText(box, format);
+  } else {
+    // Format entire content
+    formatEntireContent(box, format);
+  }
+
+  // Trigger input event to update platform state
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// Format selected text within the input box
+function formatSelectedText(box: HTMLElement, format: string) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+
+  const range = selection.getRangeAt(0);
+  const selectedText = range.toString();
+
+  if (!selectedText) return;
+
+  let formattedText: string;
+  
+  switch (format) {
+    case 'bold':
+      formattedText = toBold(selectedText);
+      break;
+    case 'italic':
+      formattedText = toItalic(selectedText);
+      break;
+    case 'boldItalic':
+      formattedText = toBoldItalic(selectedText);
+      break;
+    case 'clear':
+      formattedText = toRegular(selectedText);
+      break;
+    default:
+      return;
+  }
+
+  // For contenteditable elements
+  if (box.getAttribute('contenteditable') === 'true') {
+    range.deleteContents();
+    const textNode = document.createTextNode(formattedText);
+    range.insertNode(textNode);
+    
+    // Move cursor after inserted text
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  } 
+  // For textarea/input elements
+  else if (box.tagName === 'TEXTAREA' || box.tagName === 'INPUT') {
+    const input = box as HTMLInputElement | HTMLTextAreaElement;
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const currentValue = input.value;
+    
+    input.value = 
+      currentValue.substring(0, start) + 
+      formattedText + 
+      currentValue.substring(end);
+    
+    // Set cursor after formatted text
+    const newPosition = start + formattedText.length;
+    input.setSelectionRange(newPosition, newPosition);
+  }
+}
+
+// Format entire content of the input box
+function formatEntireContent(box: HTMLElement, format: string) {
+  let currentText: string;
+  
+  // Get current text
+  if (box.getAttribute('contenteditable') === 'true') {
+    currentText = box.innerText || '';
+  } else if (box.tagName === 'TEXTAREA' || box.tagName === 'INPUT') {
+    currentText = (box as HTMLInputElement | HTMLTextAreaElement).value || '';
+  } else {
+    return;
+  }
+
+  if (!currentText) return;
+
+  let formattedText: string;
+  
+  switch (format) {
+    case 'bold':
+      formattedText = toBold(currentText);
+      break;
+    case 'italic':
+      formattedText = toItalic(currentText);
+      break;
+    case 'boldItalic':
+      formattedText = toBoldItalic(currentText);
+      break;
+    case 'clear':
+      formattedText = toRegular(currentText);
+      break;
+    default:
+      return;
+  }
+
+  // Set formatted text
+  if (box.getAttribute('contenteditable') === 'true') {
+    box.innerText = formattedText;
+    
+    // Move cursor to end
+    setTimeout(() => {
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.selectNodeContents(box);
+      range.collapse(false);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }, 10);
+  } else if (box.tagName === 'TEXTAREA' || box.tagName === 'INPUT') {
+    const input = box as HTMLInputElement | HTMLTextAreaElement;
+    const cursorPos = input.selectionStart || 0;
+    input.value = formattedText;
+    
+    // Maintain cursor position (proportionally)
+    const newPos = Math.min(cursorPos, formattedText.length);
+    input.setSelectionRange(newPos, newPos);
+  }
+}
+
+// Position the formatting toolbar relative to input
+function positionFormattingToolbar(
+  inputElement: HTMLElement,
+  toolbar: HTMLElement
+): void {
+  document.body.appendChild(toolbar);
+
+  let isVisible = false;
+  let showTimeout: number;
+  let hideTimeout: number;
+
+  const updatePosition = () => {
+    const rect = inputElement.getBoundingClientRect();
+
+    if (rect.width === 0 || rect.height === 0) {
+      hideToolbar();
+      return;
+    }
+
+    // Position at bottom-left of input
+    let top = rect.bottom + 5;
+    let left = rect.left;
+
+    // If not enough space below, position above
+    if (rect.bottom > window.innerHeight - 50) {
+      top = rect.top - 45;
+    }
+
+    // If not enough space on left, position on right
+    if (left + 200 > window.innerWidth) {
+      left = rect.right - 200;
+    }
+
+    // Ensure toolbar is visible
+    top = Math.max(5, Math.min(top, window.innerHeight - 50));
+    left = Math.max(5, left);
+
+    toolbar.style.position = 'fixed';
+    toolbar.style.top = `${top}px`;
+    toolbar.style.left = `${left}px`;
+    toolbar.style.zIndex = '10000';
+  };
+
+  const showToolbar = () => {
+    clearTimeout(hideTimeout);
+    clearTimeout(showTimeout);
+
+    showTimeout = window.setTimeout(() => {
+      if (!isVisible) {
+        updatePosition();
+        toolbar.classList.add('visible');
+        isVisible = true;
+      }
+    }, 100);
+  };
+
+  const hideToolbar = () => {
+    clearTimeout(showTimeout);
+    clearTimeout(hideTimeout);
+
+    hideTimeout = window.setTimeout(() => {
+      if (isVisible && !toolbar.matches(':hover') && !inputElement.matches(':focus')) {
+        toolbar.classList.remove('visible');
+        isVisible = false;
+      }
+    }, 500);
+  };
+
+  updatePosition();
+
+  // Update position on scroll/resize
+  const updateHandler = () => {
+    if (isVisible) updatePosition();
+  };
+
+  window.addEventListener('scroll', updateHandler, { passive: true });
+  window.addEventListener('resize', updateHandler, { passive: true });
+
+  // Show/hide based on input interaction
+  inputElement.addEventListener('focus', showToolbar);
+  inputElement.addEventListener('blur', hideToolbar);
+  inputElement.addEventListener('mouseenter', showToolbar);
+  inputElement.addEventListener('mouseleave', hideToolbar);
+
+  toolbar.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+  toolbar.addEventListener('mouseleave', hideToolbar);
+
+  // Clean up on element removal
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.removedNodes.forEach((node) => {
+        if (node === inputElement || (node as HTMLElement)?.contains?.(inputElement)) {
+          clearTimeout(showTimeout);
+          clearTimeout(hideTimeout);
+          window.removeEventListener('scroll', updateHandler);
+          window.removeEventListener('resize', updateHandler);
+          toolbar.remove();
+          observer.disconnect();
+        }
+      });
+    });
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 // Position the pen button relative to the input
@@ -201,7 +449,7 @@ function positionPenButton(
     }
 
     // Smart positioning like Grammarly
-    let top = rect.bottom - 45; // Position near bottom-right like Grammarly
+    let top = rect.bottom - 45;
     let right = window.innerWidth - rect.right + 8;
 
     // For larger inputs (like compose areas), position in bottom-right
@@ -234,7 +482,6 @@ function positionPenButton(
     clearTimeout(hideTimeout);
     clearTimeout(showTimeout);
 
-    // Small delay like Grammarly
     showTimeout = window.setTimeout(() => {
       if (!isVisible) {
         updatePosition();
@@ -249,7 +496,6 @@ function positionPenButton(
     clearTimeout(showTimeout);
     clearTimeout(hideTimeout);
 
-    // Longer delay before hiding like Grammarly
     hideTimeout = window.setTimeout(() => {
       if (
         isVisible &&
@@ -263,10 +509,8 @@ function positionPenButton(
     }, 1500);
   };
 
-  // Initial positioning (hidden)
   updatePosition();
 
-  // Update position on scroll and resize
   const updateHandler = () => {
     if (isVisible) {
       updatePosition();
@@ -276,21 +520,18 @@ function positionPenButton(
   window.addEventListener("scroll", updateHandler, { passive: true });
   window.addEventListener("resize", updateHandler, { passive: true });
 
-  // Show/hide based on input interaction (like Grammarly)
   inputElement.addEventListener("focus", showPenButton);
   inputElement.addEventListener("blur", hidePenButton);
   inputElement.addEventListener("input", showPenButton);
   inputElement.addEventListener("mouseenter", showPenButton);
   inputElement.addEventListener("mouseleave", hidePenButton);
 
-  // Keep button visible when hovering over it
   penButton.addEventListener("mouseenter", () => {
     clearTimeout(hideTimeout);
   });
 
   penButton.addEventListener("mouseleave", hidePenButton);
 
-  // Clean up listeners when element is removed
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.removedNodes.forEach((node) => {
@@ -330,33 +571,28 @@ function createHelperButton(targetBox: HTMLElement): HTMLElement {
 
 // Show menu with saved responses
 async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
-  // Remove existing menu if any
   const existingMenu = document.querySelector(".linkedin-helper-menu");
   if (existingMenu) {
     existingMenu.remove();
     return;
   }
 
-  // Create menu
   const menu = document.createElement("div");
   menu.className = "linkedin-helper-menu";
   menu.innerHTML = '<div class="lh-menu-header">Loading responses...</div>';
 
-  // Position menu near button with smart positioning
   const rect = button.getBoundingClientRect();
-  const menuHeight = 400; // Estimated menu height
+  const menuHeight = 400;
   const viewportHeight = window.innerHeight;
   const spaceBelow = viewportHeight - rect.bottom;
   const spaceAbove = rect.top;
 
-  // Show above button if not enough space below
   if (spaceBelow < menuHeight && spaceAbove > menuHeight) {
     menu.style.top = `${rect.top - menuHeight - 10}px`;
   } else {
     menu.style.top = `${rect.bottom + 5}px`;
   }
 
-  // Ensure menu doesn't go off-screen horizontally
   const menuWidth = 400;
   const spaceRight = window.innerWidth - rect.left;
 
@@ -369,7 +605,6 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
   document.body.appendChild(menu);
 
   try {
-    // Fetch responses from backend or local storage
     const responses = await fetchResponses();
 
     if (responses.length === 0) {
@@ -390,10 +625,7 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
               (r) => `
             <div class="lh-menu-item" data-id="${r.id}">
               <div class="lh-item-title">${r.title}</div>
-              <div class="lh-item-preview">${r.content.substring(
-                0,
-                60
-              )}...</div>
+              <div class="lh-item-preview">${r.content.substring(0, 60)}...</div>
               ${
                 r.tags
                   ? `<div class="lh-item-tags">${r.tags
@@ -411,7 +643,6 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
         </div>
       `;
 
-      // Add search functionality
       const searchInput = menu.querySelector(".lh-search") as HTMLInputElement;
       searchInput?.addEventListener("input", (e) => {
         const query = (e.target as HTMLInputElement).value.toLowerCase();
@@ -424,7 +655,6 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
         });
       });
 
-      // Add click handlers for responses
       menu.querySelectorAll(".lh-menu-item[data-id]").forEach((item) => {
         item.addEventListener("click", () => {
           const responseId = item.getAttribute("data-id");
@@ -436,7 +666,6 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
         });
       });
 
-      // Handle create new button
       menu.querySelector(".lh-btn-create")?.addEventListener("click", () => {
         chrome.runtime.sendMessage({ action: "openPopup" });
         menu.remove();
@@ -450,7 +679,6 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
     `;
   }
 
-  // Close menu when clicking outside
   setTimeout(() => {
     document.addEventListener("click", function closeMenu(e) {
       if (!menu.contains(e.target as Node) && e.target !== button) {
@@ -464,7 +692,6 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
 // Fetch responses from backend or Chrome storage
 async function fetchResponses(): Promise<any[]> {
   try {
-    // Try backend first
     const response = await fetch(`${CONFIG.API_URL}/api/responses`);
     if (response.ok) {
       return await response.json();
@@ -473,7 +700,6 @@ async function fetchResponses(): Promise<any[]> {
     console.log("Canner: Backend not available, using local storage");
   }
 
-  // Fallback to Chrome storage
   return new Promise((resolve) => {
     chrome.storage.local.get(["responses"], (result) => {
       resolve(result.responses || []);
@@ -489,85 +715,59 @@ function insertText(box: HTMLElement, text: string) {
     box.getAttribute("contenteditable")
   );
 
-  // Focus the element first
   box.focus();
 
-  // Handle different types of input elements
   if (box.getAttribute("contenteditable") === "true") {
-    // Contenteditable divs (LinkedIn, X/Twitter, Facebook)
     console.log("Social Helper: Inserting into contenteditable");
 
-    // Focus and move cursor to end
-    box.focus();
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(box);
-    range.collapse(false);
-    sel?.removeAllRanges();
-    sel?.addRange(range);
+    box.innerHTML = "";
+    box.innerText = text;
 
-    // Try execCommand first
-    let inserted = false;
-    try {
-      inserted = document.execCommand('insertText', false, text);
-    } catch (e) {
-      inserted = false;
-    }
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    box.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true }));
+    box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
 
-    if (!inserted || !box.innerText.includes(text)) {
-      // Fallback: insert text node at cursor
-      range.deleteContents();
-      const tn = document.createTextNode(text);
-      range.insertNode(tn);
-      range.setStartAfter(tn);
-      range.setEndAfter(tn);
+    setTimeout(() => {
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.selectNodeContents(box);
+      range.collapse(false);
       sel?.removeAllRanges();
       sel?.addRange(range);
-      // Fire input and change events
-      box.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: text, inputType: 'insertText' }));
-      box.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    console.log('inserted');
+    }, 10);
   } else if (
     box.tagName === "TEXTAREA" ||
     (box.tagName === "INPUT" && (box as HTMLInputElement).type === "text")
   ) {
-    // Regular textarea and text input elements
     console.log("Social Helper: Inserting into textarea/input");
 
     const inputElement = box as HTMLInputElement | HTMLTextAreaElement;
 
-    // Clear and set the value
     inputElement.value = text;
 
-    // Trigger events
     inputElement.dispatchEvent(new Event("input", { bubbles: true }));
     inputElement.dispatchEvent(new Event("change", { bubbles: true }));
     inputElement.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true }));
     inputElement.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
 
-    // Set cursor to end
     setTimeout(() => {
       inputElement.setSelectionRange(text.length, text.length);
     }, 10);
   } else {
-    // Fallback: try to set content using various methods
     console.log("Social Helper: Using fallback insertion method");
 
     try {
-      // Try setting innerText first
       if ("innerText" in box) {
         (box as any).innerText = text;
       } else if ("textContent" in box) {
         (box as any).textContent = text;
       }
 
-      // Try setting value if it exists
       if ("value" in box) {
         (box as any).value = text;
       }
 
-      // Trigger comprehensive events
       const events = ["input", "change", "keydown", "keyup", "focus", "blur"];
       events.forEach((eventType) => {
         box.dispatchEvent(new Event(eventType, { bubbles: true }));
@@ -583,7 +783,6 @@ function insertText(box: HTMLElement, text: string) {
 // Add helper buttons for connection requests
 function addConnectionHelpers() {
   console.log("Canner: Adding connection helpers...");
-  // Find connection message boxes that are NOT contenteditable (to avoid overlap)
   const connectionBoxes = document.querySelectorAll(
     '[name="message"]:not([contenteditable="true"])'
   );
@@ -596,7 +795,6 @@ function addConnectionHelpers() {
   connectionBoxes.forEach((box, index) => {
     console.log(`Canner: Processing connection element ${index + 1}:`, box);
 
-    // Skip if element is too small
     const rect = box.getBoundingClientRect();
     if (rect.width < 30 || rect.height < 15) {
       console.log(
@@ -605,7 +803,6 @@ function addConnectionHelpers() {
       return;
     }
 
-    // Create simple ID
     if (!box.id) {
       box.id = `lh-conn-${Math.random().toString(36).substr(2, 9)}`;
     }
@@ -633,10 +830,8 @@ function observeDOM() {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === 1) {
-          // Element node
           const element = node as HTMLElement;
 
-          // Check for any input elements
           if (
             element.querySelector('[contenteditable="true"]') ||
             element.querySelector("textarea") ||
@@ -681,6 +876,32 @@ function addKeyboardShortcuts() {
         if (button && button.classList.contains("linkedin-helper-btn")) {
           button.click();
         }
+      }
+    }
+
+    // Ctrl+B for bold
+    if (e.ctrlKey && e.key === 'b') {
+      e.preventDefault();
+      const activeElement = document.activeElement as HTMLElement;
+      if (activeElement && (
+        activeElement.getAttribute('contenteditable') === 'true' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.tagName === 'INPUT'
+      )) {
+        applyFormatting(activeElement, 'bold');
+      }
+    }
+    
+    // Ctrl+I for italic
+    if (e.ctrlKey && e.key === 'i') {
+      e.preventDefault();
+      const activeElement = document.activeElement as HTMLElement;
+      if (activeElement && (
+        activeElement.getAttribute('contenteditable') === 'true' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.tagName === 'INPUT'
+      )) {
+        applyFormatting(activeElement, 'italic');
       }
     }
   });
@@ -1019,6 +1240,431 @@ if (document.readyState === "loading") {
 } else {
   init();
 }
+function createComposeModal(targetBox: HTMLElement): HTMLElement {
+  console.log('Canner: Opening compose modal for', targetBox);
+
+  const modal = document.createElement('div');
+  modal.className = 'canner-compose-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'compose-modal-title');
+
+  modal.innerHTML = `
+    <div class="canner-modal-overlay" aria-hidden="true"></div>
+    
+    <div class="canner-modal-container">
+      <div class="canner-modal-header">
+        <h3 id="compose-modal-title">📝 Compose Formatted Post</h3>
+        <button class="canner-modal-close" title="Close (Esc)" aria-label="Close modal">✕</button>
+      </div>
+      
+      <div class="canner-modal-toolbar">
+        <button class="canner-format-btn" data-format="bold" title="Bold (Ctrl+B)" aria-label="Bold">
+          <b>B</b>
+        </button>
+        <button class="canner-format-btn" data-format="italic" title="Italic (Ctrl+I)" aria-label="Italic">
+          <i>I</i>
+        </button>
+        <button class="canner-format-btn" data-format="boldItalic" title="Bold Italic" aria-label="Bold Italic">
+          <b><i>BI</i></b>
+        </button>
+        <button class="canner-format-btn" data-format="clear" title="Clear Formatting" aria-label="Clear formatting">
+          <span style="text-decoration: line-through;">T</span>
+        </button>
+        <div class="canner-toolbar-divider"></div>
+        <button class="canner-save-draft-btn" title="Save as draft" aria-label="Save draft">
+          💾 Draft
+        </button>
+      </div>
+      
+      <div class="canner-modal-body">
+        <div class="canner-editor-pane">
+          <label for="compose-editor" class="canner-pane-label">✍️ Compose Your Message</label>
+          <div 
+            id="compose-editor"
+            class="canner-format-editor" 
+            contenteditable="true"
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Message editor"
+            data-placeholder="Type your message here... Select text and use toolbar buttons to format."
+          ></div>
+          <div class="canner-editor-hint">
+            💡 Tip: Select text and click format buttons, or use keyboard shortcuts
+          </div>
+        </div>
+        
+        <div class="canner-preview-pane">
+          <label class="canner-pane-label">👁️ LinkedIn Preview</label>
+          <div id="linkedin-preview" class="canner-linkedin-preview-content" aria-live="polite" aria-label="LinkedIn preview">
+            <span class="canner-preview-placeholder">Your formatted text will appear here...</span>
+          </div>
+          <div class="canner-character-count">
+            <span id="char-count">0</span> characters
+            <span id="word-count" style="margin-left: 12px;">0</span> words
+          </div>
+        </div>
+      </div>
+      
+      <div class="canner-modal-footer">
+        <button class="canner-btn-secondary canner-cancel-btn">Cancel</button>
+        <button class="canner-btn-primary canner-insert-btn">Insert to LinkedIn →</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  document.body.style.overflow = 'hidden';
+
+  const editorElement = modal.querySelector('#compose-editor') as HTMLElement;
+  const previewElement = modal.querySelector('#linkedin-preview') as HTMLElement;
+  const charCountElement = modal.querySelector('#char-count') as HTMLElement;
+  const wordCountElement = modal.querySelector('#word-count') as HTMLElement;
+  const insertBtn = modal.querySelector('.canner-insert-btn') as HTMLButtonElement;
+  const cancelBtn = modal.querySelector('.canner-cancel-btn') as HTMLButtonElement;
+  const closeBtn = modal.querySelector('.canner-modal-close') as HTMLButtonElement;
+  const overlay = modal.querySelector('.canner-modal-overlay') as HTMLElement;
+
+  setTimeout(() => editorElement.focus(), 100);
+
+  function updatePreview() {
+    const plainText = editorElement.innerText || '';
+    
+    if (!plainText.trim()) {
+      previewElement.innerHTML = '<span class="canner-preview-placeholder">Your formatted text will appear here...</span>';
+      charCountElement.textContent = '0';
+      wordCountElement.textContent = '0';
+      return;
+    }
+
+    const linkedInText = convertHTMLToLinkedInFormat(editorElement);
+    previewElement.innerText = linkedInText;
+    charCountElement.textContent = linkedInText.length.toString();
+    
+    const wordCount = plainText.trim().split(/\s+/).filter(w => w.length > 0).length;
+    wordCountElement.textContent = wordCount.toString();
+  }
+
+  editorElement.addEventListener('input', updatePreview);
+  editorElement.addEventListener('keyup', updatePreview);
+
+  function applyModalFormatting(formatType: string) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    
+    if (!editorElement.contains(range.commonAncestorContainer)) {
+      console.log('Canner: Selection not in editor');
+      return;
+    }
+
+    const selectedText = range.toString();
+    if (!selectedText) {
+      console.log('Canner: No text selected');
+      return;
+    }
+
+    if (formatType === 'clear') {
+      const textNode = document.createTextNode(selectedText);
+      range.deleteContents();
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      updatePreview();
+      return;
+    }
+
+    let wrapper: HTMLElement;
+    
+    switch (formatType) {
+      case 'bold':
+        wrapper = document.createElement('b');
+        break;
+      case 'italic':
+        wrapper = document.createElement('i');
+        break;
+      case 'boldItalic':
+        const b = document.createElement('b');
+        const i = document.createElement('i');
+        b.appendChild(i);
+        wrapper = b;
+        break;
+      default:
+        return;
+    }
+
+    try {
+      range.surroundContents(wrapper);
+      range.setStartAfter(wrapper);
+      range.setEndAfter(wrapper);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      updatePreview();
+    } catch (error) {
+      console.error('Canner: Error applying format:', error);
+      const contents = range.extractContents();
+      wrapper.appendChild(contents);
+      range.insertNode(wrapper);
+      updatePreview();
+    }
+  }
+
+  function convertHTMLToLinkedInFormat(element: HTMLElement): string {
+    let result = '';
+    
+    function processNode(node: Node): void {
+      if (node.nodeType === Node.TEXT_NODE) {
+        result += node.textContent || '';
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        const tagName = el.tagName.toLowerCase();
+        
+        let text = '';
+        for (const child of Array.from(node.childNodes)) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            text += child.textContent || '';
+          }
+        }
+        
+        if ((tagName === 'b' || tagName === 'strong' || tagName === 'i' || tagName === 'em') && text) {
+          const parentBold = el.parentElement?.closest('b, strong') !== null;
+          const parentItalic = el.parentElement?.closest('i, em') !== null;
+          
+          const effectiveBold = (tagName === 'b' || tagName === 'strong') || parentBold;
+          const effectiveItalic = (tagName === 'i' || tagName === 'em') || parentItalic;
+          
+          if (effectiveBold && effectiveItalic) {
+            result += toBoldItalic(text);
+          } else if (effectiveBold) {
+            result += toBold(text);
+          } else if (effectiveItalic) {
+            result += toItalic(text);
+          } else {
+            result += text;
+          }
+        } else {
+          for (const child of Array.from(node.childNodes)) {
+            processNode(child);
+          }
+        }
+      }
+    }
+    
+    processNode(element);
+    return result;
+  }
+
+  modal.querySelectorAll('.canner-format-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const format = (btn as HTMLElement).getAttribute('data-format');
+      if (format) {
+        applyModalFormatting(format);
+        editorElement.focus();
+      }
+    });
+  });
+
+  editorElement.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'b') {
+      e.preventDefault();
+      applyModalFormatting('bold');
+    } else if (e.ctrlKey && e.key === 'i') {
+      e.preventDefault();
+      applyModalFormatting('italic');
+    } else if (e.ctrlKey && e.shiftKey && e.key === 'B') {
+      e.preventDefault();
+      applyModalFormatting('boldItalic');
+    } else if (e.key === 'Escape') {
+      closeModal();
+    }
+  });
+
+  function closeModal() {
+    document.body.style.overflow = '';
+    modal.classList.add('canner-modal-closing');
+    setTimeout(() => modal.remove(), 200);
+  }
+
+  insertBtn.addEventListener('click', () => {
+    const linkedInText = convertHTMLToLinkedInFormat(editorElement);
+    
+    if (!linkedInText.trim()) {
+      alert('Please enter some text before inserting.');
+      return;
+    }
+    
+    insertText(targetBox, linkedInText);
+    closeModal();
+    showToast('✅ Text inserted to LinkedIn!');
+  });
+
+  cancelBtn.addEventListener('click', closeModal);
+  closeBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', closeModal);
+
+  const saveDraftBtn = modal.querySelector('.canner-save-draft-btn');
+  saveDraftBtn?.addEventListener('click', async () => {
+    const plainText = editorElement.innerText || '';
+    if (!plainText.trim()) {
+      showToast('⚠️ Nothing to save');
+      return;
+    }
+    
+    await saveResponseDirectly(plainText);
+    showToast('✅ Saved as draft!');
+  });
+
+  modal.querySelector('.canner-modal-container')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  return modal;
+}
+
+function createComposeButton(targetBox: HTMLElement): HTMLElement {
+  const composeBtn = document.createElement('div');
+  composeBtn.className = 'social-helper-compose';
+  
+  composeBtn.innerHTML = `
+    <div class="compose-icon">📝</div>
+    <div class="compose-tooltip">Compose with Formatting</div>
+  `;
+  
+  composeBtn.title = 'Compose with formatting (Ctrl+Shift+E)';
+  
+  composeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    createComposeModal(targetBox);
+  });
+  
+  let hoverTimeout: number;
+  composeBtn.addEventListener('mouseenter', () => {
+    clearTimeout(hoverTimeout);
+    composeBtn.classList.add('compose-hover');
+  });
+  
+  composeBtn.addEventListener('mouseleave', () => {
+    hoverTimeout = window.setTimeout(() => {
+      composeBtn.classList.remove('compose-hover');
+    }, 200);
+  });
+  
+  return composeBtn;
+}
+
+function positionComposeButton(
+  inputElement: HTMLElement,
+  composeBtn: HTMLElement
+): void {
+  document.body.appendChild(composeBtn);
+  
+  let isVisible = false;
+  let showTimeout: number;
+  let hideTimeout: number;
+  
+  const updatePosition = () => {
+    const rect = inputElement.getBoundingClientRect();
+    
+    if (rect.width === 0 || rect.height === 0) {
+      hideButton();
+      return;
+    }
+    
+    let top = rect.bottom - 45;
+    let right = window.innerWidth - rect.right + 54;
+    
+    if (rect.height > 60) {
+      top = rect.bottom - 50;
+      right = window.innerWidth - rect.right + 58;
+    }
+    
+    if (rect.bottom > window.innerHeight - 60) {
+      top = rect.top - 50;
+    }
+    
+    top = Math.max(8, Math.min(top, window.innerHeight - 60));
+    right = Math.max(8, right);
+    
+    composeBtn.style.position = 'fixed';
+    composeBtn.style.top = `${top}px`;
+    composeBtn.style.right = `${right}px`;
+    composeBtn.style.zIndex = '10000';
+  };
+  
+  const showButton = () => {
+    clearTimeout(hideTimeout);
+    clearTimeout(showTimeout);
+    
+    showTimeout = window.setTimeout(() => {
+      if (!isVisible) {
+        updatePosition();
+        composeBtn.classList.add('visible');
+        isVisible = true;
+      }
+    }, 200);
+  };
+  
+  const hideButton = () => {
+    clearTimeout(showTimeout);
+    clearTimeout(hideTimeout);
+    
+    hideTimeout = window.setTimeout(() => {
+      if (isVisible && !composeBtn.matches(':hover') && !inputElement.matches(':focus')) {
+        composeBtn.classList.remove('visible');
+        isVisible = false;
+      }
+    }, 1500);
+  };
+  
+  updatePosition();
+  
+  const updateHandler = () => {
+    if (isVisible) updatePosition();
+  };
+  
+  window.addEventListener('scroll', updateHandler, { passive: true });
+  window.addEventListener('resize', updateHandler, { passive: true });
+  
+  inputElement.addEventListener('focus', showButton);
+  inputElement.addEventListener('blur', hideButton);
+  inputElement.addEventListener('input', showButton);
+  inputElement.addEventListener('mouseenter', showButton);
+  inputElement.addEventListener('mouseleave', hideButton);
+  
+  composeBtn.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+  composeBtn.addEventListener('mouseleave', hideButton);
+  
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.removedNodes.forEach((node) => {
+        if (node === inputElement || (node as HTMLElement)?.contains?.(inputElement)) {
+          clearTimeout(showTimeout);
+          clearTimeout(hideTimeout);
+          window.removeEventListener('scroll', updateHandler);
+          window.removeEventListener('resize', updateHandler);
+          composeBtn.remove();
+          observer.disconnect();
+        }
+      });
+    });
+  });
+  
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// ============================================
+// Initialize when DOM is ready
+// ============================================
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
 
 // SPA navigation handling for LinkedIn and Twitter/X
 {
@@ -1052,7 +1698,9 @@ if (document.readyState === "loading") {
   }
 }
 
+
 // Listen for messages from popup or background script
+// ============================================
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "insertResponse") {
     const activeElement = document.activeElement as HTMLElement;
@@ -1068,3 +1716,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   return true;
 });
+
+// Listen for messages from popup or background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "insertResponse") {
+    const activeElement = document.activeElement as HTMLElement;
+    if (
+      activeElement &&
+      activeElement.getAttribute("contenteditable") === "true"
+    ) {
+      insertText(activeElement, message.content);
+      sendResponse({ success: true });
+    } else {
+      sendResponse({ success: false, error: "No active input box" });
+    }
+  }
+})

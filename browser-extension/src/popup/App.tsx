@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { deleteResponse, getResponses, Response, saveResponse, updateResponse } from "../utils/api";
+import { deleteResponse, getResponses, Response, saveResponse, trackUsage, updateResponse } from "../utils/api";
+
+type SortOption = "date-desc" | "date-asc" | "alphabetical" | "most-used" | "custom";
 
 const App: React.FC = () => {
   const [responses, setResponses] = useState<Response[]>([]);
@@ -11,14 +13,19 @@ const App: React.FC = () => {
   const [notification, setNotification] = useState<string>("");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<SortOption>("date-desc");
   const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
   useEffect(() => {
     load();
     loadTheme();
+    loadSortPreference();
   }, []);
 
   useEffect(() => {
@@ -32,6 +39,10 @@ const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
     chrome.storage.sync.set({ theme: isDarkMode ? 'dark' : 'light' });
   }, [isDarkMode]);
+
+  useEffect(() => {
+    chrome.storage.sync.set({ sortBy });
+  }, [sortBy]);
 
   async function loadTheme() {
     const result = await chrome.storage.sync.get(['theme']);
@@ -48,6 +59,14 @@ const App: React.FC = () => {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSortPreference() {
+    const result = await chrome.storage.sync.get(['sortBy']);
+    const savedSortBy = result.sortBy;
+    if (savedSortBy && ['date-desc', 'date-asc', 'alphabetical', 'most-used', 'custom'].includes(savedSortBy)) {
+      setSortBy(savedSortBy as SortOption);
     }
   }
 
@@ -78,6 +97,23 @@ const App: React.FC = () => {
       r.content.toLowerCase().includes(q) ||
       (Array.isArray(r.tags) ? r.tags.join(" ").toLowerCase() : String(r.tags || "")).includes(q)
     );
+  });
+
+  const sortedResponses = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case "date-desc":
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      case "date-asc":
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      case "alphabetical":
+        return a.title.localeCompare(b.title);
+      case "most-used":
+        return (b.usage_count || 0) - (a.usage_count || 0);
+      case "custom":
+        return (a.custom_order || 0) - (b.custom_order || 0);
+      default:
+        return 0;
+    }
   });
 
   async function handleSave() {
@@ -162,7 +198,7 @@ const App: React.FC = () => {
     }, 300); // Match animation duration
   }
 
-  async function handleInsert(text: string) {
+  async function handleInsert(text: string, responseId?: string) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
@@ -181,13 +217,60 @@ const App: React.FC = () => {
     }
   }
 
-  // Removed copy functionality
-  // async function handleCopy(text: string) {
-  //   navigator.clipboard.writeText(text).then(() => {
-  //     setNotification("✓ Copied to clipboard");
-  //   });
-  // }
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    if (sortBy !== "custom") return;
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    if (sortBy !== "custom") return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+    if (sortBy !== "custom" || draggedIndex === null || draggedIndex === dropIndex) return;
+    
+    e.preventDefault();
+    
+    const newResponses = [...sortedResponses];
+    const draggedItem = newResponses[draggedIndex];
+    
+    newResponses.splice(draggedIndex, 1);
+    newResponses.splice(dropIndex, 0, draggedItem);
+    
+    const updatedResponses = newResponses.map((response, index) => ({
+      ...response,
+      custom_order: index
+    }));
+    
+    setResponses(updatedResponses);
+    
+    try {
+      for (const response of updatedResponses) {
+        if (response.id) {
+          await saveResponse({ ...response, custom_order: response.custom_order });
+        }
+      }
+      setNotification("✓ Custom order saved");
+    } catch (error) {
+      console.error("Failed to save custom order:", error);
+      setNotification("⚠️ Failed to save custom order");
+    }
+    
+    setDraggedIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  function handleCopy(text: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setNotification("✓ Copied to clipboard");
+    });
+  }
 
   return (
     <div className="popup-container">
@@ -211,6 +294,20 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="header-actions">
+            <div className="sort-container">
+              <select
+                className="sort-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                aria-label="Sort responses"
+              >
+                <option value="date-desc">Newest First</option>
+                <option value="date-asc">Oldest First</option>
+                <option value="alphabetical">Alphabetical</option>
+                <option value="most-used">Most Used</option>
+                <option value="custom">Custom Order</option>
+              </select>
+            </div>
             <button className="theme-toggle" onClick={() => setIsDarkMode(!isDarkMode)} aria-label="Toggle dark mode">
               {isDarkMode ? (
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -271,7 +368,7 @@ const App: React.FC = () => {
               </div>
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sortedResponses.length === 0 ? (
           <div className="empty-state">
             {query ? (
               <>
@@ -300,8 +397,16 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="responses-list">
-            {filtered.map((r) => (
-              <div key={r.id} className={`response-card ${deletingIds.has(r.id!) ? 'sliding-out' : ''}`}>
+            {sortedResponses.map((r, index) => (
+              <div 
+                key={r.id} 
+                className={`response-card ${deletingIds.has(r.id!) ? 'sliding-out' : ''} ${sortBy === 'custom' ? 'draggable' : ''}`}
+                draggable={sortBy === 'custom'}
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, index)}
+                onDragEnd={handleDragEnd}
+              >
                 <div className="card-header">
                   <h3 className="card-title">{r.title}</h3>
                   {Array.isArray(r.tags) && r.tags.length > 0 && (
@@ -315,7 +420,7 @@ const App: React.FC = () => {
                 </div>
                 <p className="card-content">{r.content}</p>
                 <div className="card-actions">
-                  <button className="btn-action btn-insert" onClick={() => handleInsert(r.content)} aria-label="Insert response">
+                  <button className="btn-action btn-insert" onClick={() => handleInsert(r.content, r.id)} aria-label="Insert response">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 5v14M5 12h14"/>
                     </svg>

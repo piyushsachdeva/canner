@@ -7,6 +7,8 @@ export interface Response {
   title: string;
   content: string;
   tags?: string[] | string;
+  usage_count?: number;
+  custom_order?: number;
   created_at?: string;
 }
 
@@ -139,6 +141,38 @@ export async function deleteResponse(id: string): Promise<void> {
       const responses = result.responses || [];
       const filtered = responses.filter((r: Response) => r.id !== id);
       chrome.storage.local.set({ responses: filtered }, () => {
+        resolve();
+      });
+    });
+  });
+}
+
+export async function trackUsage(id: string): Promise<void> {
+  try {
+    const result = await fetch(`${API_URL}/api/responses/${id}/use`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (result.ok) {
+      const responses = await getResponses();
+      const updatedResponses = responses.map(r => 
+        r.id === id ? { ...r, usage_count: (r.usage_count || 0) + 1 } : r
+      );
+      chrome.storage.local.set({ responses: updatedResponses });
+      return;
+    }
+  } catch (error) {
+    console.log("Backend not available, updating local storage");
+  }
+
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["responses"], (result) => {
+      const responses = result.responses || [];
+      const updatedResponses = responses.map((r: Response) => 
+        r.id === id ? { ...r, usage_count: (r.usage_count || 0) + 1 } : r
+      );
+      chrome.storage.local.set({ responses: updatedResponses }, () => {
         resolve();
       });
     });

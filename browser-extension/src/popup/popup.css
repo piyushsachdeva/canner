@@ -154,6 +154,34 @@ body {
   gap: 8px;
 }
 
+.sort-container {
+  position: relative;
+}
+
+.sort-select {
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: var(--transition);
+  backdrop-filter: blur(8px);
+  min-width: 120px;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.sort-select:hover {
+  border-color: var(--border-strong);
+}
+
 .brand-logo {
   width: 40px;
   height: 40px;
@@ -389,6 +417,19 @@ body {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px) scale(1.01);
+}
+
+.response-card.draggable {
+  cursor: grab;
+}
+
+.response-card.draggable:active {
+  cursor: grabbing;
+}
+
+.response-card.draggable[draggable="true"]:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: var(--shadow-lg);
 }
 
 .card-header {

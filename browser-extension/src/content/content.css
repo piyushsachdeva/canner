@@ -21,6 +21,37 @@
   backdrop-filter: blur(8px);
 }
 
+/* Inline ghost suggestion shown after caret (grey completion) */
+.canner-ghost-suggestion,
+.sh-inline-suggestion {
+  color: rgba(102, 112, 122, 0.7);
+  pointer-events: none;
+  user-select: none;
+  display: inline;
+  margin-left: 2px;
+  font-style: normal;
+  opacity: 0.9;
+  white-space: pre;
+  vertical-align: baseline;
+}
+
+/* For textarea/input overlay */
+.sh-inline-overlay {
+  position: absolute;
+  color: rgba(102, 112, 122, 0.7);
+  pointer-events: none;
+  white-space: pre;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  opacity: 0.9;
+  z-index: 10005;
+  overflow-wrap: break-word;
+  max-width: 300px;
+  display: inline;
+  vertical-align: baseline;
+}
+
 /* Show button on input focus/hover */
 .social-helper-pen.visible {
   opacity: 1;

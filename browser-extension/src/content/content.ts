@@ -5,7 +5,7 @@ console.log("Canner: Content script loaded");
 
 // Configuration
 const CONFIG = {
-  API_URL: "http://localhost:5000",
+  API_URL: "http://localhost:8000",
   BUTTON_ICON: "💬",
   BUTTON_COLOR: "#0a66c2", // LinkedIn blue
 };
@@ -464,10 +464,19 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
 // Fetch responses from backend or Chrome storage
 async function fetchResponses(): Promise<any[]> {
   try {
-    // Try backend first
-    const response = await fetch(`${CONFIG.API_URL}/api/responses`);
+    // Try to fetch from backend first (content scripts can make HTTP requests)
+    const response = await fetch(`${CONFIG.API_URL}/responses/`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
     if (response.ok) {
-      return await response.json();
+      const data = await response.json();
+      // Cache the data in Chrome storage for offline use
+      chrome.storage.local.set({ responses: data });
+      return data;
     }
   } catch (error) {
     console.log("Canner: Backend not available, using local storage");
@@ -476,7 +485,28 @@ async function fetchResponses(): Promise<any[]> {
   // Fallback to Chrome storage
   return new Promise((resolve) => {
     chrome.storage.local.get(["responses"], (result) => {
-      resolve(result.responses || []);
+      const responses = result.responses || [];
+      // If no data in storage, provide some defaults
+      if (responses.length === 0) {
+        const defaultResponses = [
+          {
+            id: "default-1",
+            title: "Connection Request",
+            content: "Hi {{name}}, I'd love to connect and learn more about your work in {{industry}}.",
+            tags: ["linkedin", "networking", "connection"]
+          },
+          {
+            id: "default-2", 
+            title: "Thank You Message",
+            content: "Thank you for connecting! I appreciate the opportunity to expand my network.",
+            tags: ["networking", "gratitude", "professional"]
+          }
+        ];
+        chrome.storage.local.set({ responses: defaultResponses });
+        resolve(defaultResponses);
+      } else {
+        resolve(responses);
+      }
     });
   });
 }
@@ -877,7 +907,7 @@ async function showSaveDialog(text: string) {
 
     // Save the response
     try {
-      const response = await fetch(`${CONFIG.API_URL}/api/responses`, {
+      const response = await fetch(`${CONFIG.API_URL}/responses/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -967,7 +997,7 @@ async function saveResponseDirectly(text: string) {
 
   // Try to save to backend first
   try {
-    const response = await fetch(`${CONFIG.API_URL}/api/responses`, {
+    const response = await fetch(`${CONFIG.API_URL}/responses/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

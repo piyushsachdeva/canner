@@ -52,6 +52,9 @@
       "label": "PostgreSQL",
       "onAutoForward": "silent"
     },
+    "8000": {
+      "label": "Fastapi backend API"
+    },
     "8080": {
       "label": "pgAdmin",
       "onAutoForward": "notify"

@@ -1,5 +1,7 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
+from prometheus_flask_exporter import PrometheusMetrics
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from flasgger import Swagger
 import sqlite3
 import json
@@ -22,6 +24,7 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+metrics = PrometheusMetrics(app)
 
 # Swagger configuration
 swagger_config = {
@@ -809,6 +812,12 @@ def health_check():
             'database_connected': False,
             'error': str(e)
         }), 503
+
+@app.route('/metrics')
+def metrics_endpoint():
+    """Explicit Prometheus metrics endpoint."""
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
 
 if __name__ == '__main__':
     # Configure logging

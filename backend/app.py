@@ -217,6 +217,53 @@ def dict_from_row(row) -> Dict[str, Any]:
         'updated_at': str(row['updated_at']) if row['updated_at'] else None
     }
 
+
+# Lightweight health and version endpoints useful for monitoring and smoke tests
+@app.route('/health', methods=['GET'])
+def health_check():
+  """Health check endpoint.
+
+  Verifies the application can open a database connection and returns a simple
+  JSON payload describing the service status. This is intentionally small and
+  safe for use by load balancers, uptime monitors, and CI smoke tests.
+  """
+  try:
+    conn = get_db_connection()
+    # run a minimal query to verify DB responsiveness
+    try:
+      if is_postgres():
+        execute_query(conn, 'SELECT 1')
+        db_type = 'PostgreSQL'
+      else:
+        execute_query(conn, 'SELECT 1')
+        db_type = 'SQLite'
+    finally:
+      try:
+        conn.close()
+      except Exception:
+        pass
+
+    return jsonify({
+      'status': 'ok',
+      'database': db_type,
+      'time': datetime.utcnow().isoformat() + 'Z'
+    }), 200
+
+  except Exception as exc:
+    logging.exception('Health check failed')
+    return jsonify({'status': 'error', 'error': str(exc)}), 500
+
+
+@app.route('/version', methods=['GET'])
+def version():
+  """Return application version information.
+
+  Reads the version from the environment variable `APP_VERSION` if present,
+  otherwise falls back to the Swagger template version.
+  """
+  version = os.getenv('APP_VERSION', swagger_template.get('info', {}).get('version', '1.0.0'))
+  return jsonify({'version': version}), 200
+
 # api to get all responses with optional search
 @app.route('/api/responses', methods=['GET'])
 def get_responses():

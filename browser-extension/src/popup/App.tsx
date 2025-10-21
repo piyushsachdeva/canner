@@ -1,5 +1,84 @@
-import React, { useEffect, useState } from "react";
-import { deleteResponse, getResponses, Response, saveResponse, updateResponse } from "../utils/api";
+import React, { useEffect, useState, useRef } from "react";
+import { deleteResponse, getResponses, Response, saveResponse, trackUsage, updateResponse } from "../utils/api";
+
+type SortOption = "date-desc" | "date-asc" | "alphabetical" | "most-used";
+
+interface SortDropdownProps {
+  value: SortOption;
+  onChange: (value: SortOption) => void;
+}
+
+const SortDropdown: React.FC<SortDropdownProps> = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const options = [
+    { value: "date-desc" as SortOption, label: "Newest First" },
+    { value: "date-asc" as SortOption, label: "Oldest First" },
+    { value: "alphabetical" as SortOption, label: "Alphabetical" },
+    { value: "most-used" as SortOption, label: "Most Used" },
+  ];
+
+  const currentLabel = options.find(opt => opt.value === value)?.label || "Newest First";
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelect = (optionValue: SortOption) => {
+    onChange(optionValue);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="sort-container" ref={dropdownRef}>
+      <button
+        className="sort-button"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span className="sort-button-text">{currentLabel}</span>
+        <svg
+          className={`sort-button-icon ${isOpen ? 'rotated' : ''}`}
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="sort-dropdown-menu">
+          {options.map((option, index) => (
+            <React.Fragment key={option.value}>
+              <button
+                className={`sort-option ${value === option.value ? 'selected' : ''}`}
+                onClick={() => handleSelect(option.value)}
+                role="option"
+                aria-selected={value === option.value}
+              >
+                {option.label}
+              </button>
+              {index < options.length - 1 && <div className="sort-separator" />}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [responses, setResponses] = useState<Response[]>([]);
@@ -11,14 +90,18 @@ const App: React.FC = () => {
   const [notification, setNotification] = useState<string>("");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<SortOption>("date-desc");
   const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     load();
     loadTheme();
+    loadSortPreference();
   }, []);
 
   useEffect(() => {
@@ -32,6 +115,10 @@ const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
     chrome.storage.sync.set({ theme: isDarkMode ? 'dark' : 'light' });
   }, [isDarkMode]);
+
+  useEffect(() => {
+    chrome.storage.sync.set({ sortBy });
+  }, [sortBy]);
 
   async function loadTheme() {
     const result = await chrome.storage.sync.get(['theme']);
@@ -48,6 +135,14 @@ const App: React.FC = () => {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSortPreference() {
+    const result = await chrome.storage.sync.get(['sortBy']);
+    const savedSortBy = result.sortBy;
+    if (savedSortBy && ['date-desc', 'date-asc', 'alphabetical', 'most-used'].includes(savedSortBy)) {
+      setSortBy(savedSortBy as SortOption);
     }
   }
 
@@ -78,6 +173,21 @@ const App: React.FC = () => {
       r.content.toLowerCase().includes(q) ||
       (Array.isArray(r.tags) ? r.tags.join(" ").toLowerCase() : String(r.tags || "")).includes(q)
     );
+  });
+
+  const sortedResponses = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case "date-desc":
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      case "date-asc":
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      case "alphabetical":
+        return a.title.localeCompare(b.title);
+      case "most-used":
+        return (b.usage_count || 0) - (a.usage_count || 0);
+      default:
+        return 0;
+    }
   });
 
   async function handleSave() {
@@ -162,13 +272,25 @@ const App: React.FC = () => {
     }, 300); // Match animation duration
   }
 
-  async function handleInsert(text: string) {
+  async function handleInsert(text: string, responseId?: string) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
-        chrome.tabs.sendMessage(tab.id, { action: "insertResponse", content: text }, (res) => {
+        chrome.tabs.sendMessage(tab.id, { action: "insertResponse", content: text }, async (res) => {
           if (res?.success) {
             setNotification("✓ Inserted successfully");
+            // Track usage when response is successfully inserted
+            if (responseId) {
+              try {
+                await trackUsage(responseId);
+                // Update local state to reflect usage count
+                setResponses(prev => prev.map(r => 
+                  r.id === responseId ? { ...r, usage_count: (r.usage_count || 0) + 1 } : r
+                ));
+              } catch (error) {
+                console.error("Failed to track usage:", error);
+              }
+            }
             setTimeout(() => window.close(), 500);
           } else {
             setNotification("⚠️ No input field detected");
@@ -180,14 +302,6 @@ const App: React.FC = () => {
       setNotification("⚠️ Failed to insert");
     }
   }
-
-  // Removed copy functionality
-  // async function handleCopy(text: string) {
-  //   navigator.clipboard.writeText(text).then(() => {
-  //     setNotification("✓ Copied to clipboard");
-  //   });
-  // }
-
 
   return (
     <div className="popup-container">
@@ -210,6 +324,7 @@ const App: React.FC = () => {
               <p className="brand-subtitle">{responses.length} {responses.length === 1 ? 'response' : 'responses'}</p>
             </div>
           </div>
+          
           <div className="header-actions">
             <button className="theme-toggle" onClick={() => setIsDarkMode(!isDarkMode)} aria-label="Toggle dark mode">
               {isDarkMode ? (
@@ -234,25 +349,33 @@ const App: React.FC = () => {
       </header>
 
       <div className="popup-body">
-        <div className="search-container">
-          <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input
-            className="search-input"
-            type="text"
-            placeholder="Search by title, content, or tags..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search responses"
-          />
-          {query && (
-            <button className="search-clear" onClick={() => setQuery("")} aria-label="Clear search">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
+        <div className="search-sort-container">
+          <div className="search-container">
+            <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              className="search-input"
+              type="text"
+              placeholder="Search by title, content, or tags..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search responses"
+            />
+            {query && (
+              <button className="search-clear" onClick={() => setQuery("")} aria-label="Clear search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {!showModal && (
+            <div className="sort-container">
+              <SortDropdown value={sortBy} onChange={setSortBy} />
+            </div>
           )}
         </div>
 
@@ -271,7 +394,7 @@ const App: React.FC = () => {
               </div>
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sortedResponses.length === 0 ? (
           <div className="empty-state">
             {query ? (
               <>
@@ -300,8 +423,11 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="responses-list">
-            {filtered.map((r) => (
-              <div key={r.id} className={`response-card ${deletingIds.has(r.id!) ? 'sliding-out' : ''}`}>
+            {sortedResponses.map((r, index) => (
+              <div 
+                key={r.id} 
+                className={`response-card ${deletingIds.has(r.id!) ? 'sliding-out' : ''}`}
+              >
                 <div className="card-header">
                   <h3 className="card-title">{r.title}</h3>
                   {Array.isArray(r.tags) && r.tags.length > 0 && (
@@ -315,7 +441,7 @@ const App: React.FC = () => {
                 </div>
                 <p className="card-content">{r.content}</p>
                 <div className="card-actions">
-                  <button className="btn-action btn-insert" onClick={() => handleInsert(r.content)} aria-label="Insert response">
+                  <button className="btn-action btn-insert" onClick={() => handleInsert(r.content, r.id)} aria-label="Insert response">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 5v14M5 12h14"/>
                     </svg>

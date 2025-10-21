@@ -465,6 +465,8 @@ def dict_from_row(row) -> Dict[str, Any]:
         'title': row['title'],
         'content': row['content'],
         'tags': tags,
+        'usage_count': row.get('usage_count', 0),
+        'custom_order': row.get('custom_order', 0),
         'created_at': str(row['created_at']) if row['created_at'] else None,
         'updated_at': str(row['updated_at']) if row['updated_at'] else None
     }
@@ -539,23 +541,25 @@ def create_response():
     title = data['title']
     content = data['content']
     tags = data.get('tags', [])
+    usage_count = data.get('usage_count', 0)
+    custom_order = data.get('custom_order', 0)
     
     conn = get_db_connection()
     
     if is_postgres():
         # PostgreSQL with JSONB and auto-generated UUID
         query = '''
-            INSERT INTO responses (title, content, tags) 
-            VALUES (%s, %s, %s) 
+            INSERT INTO responses (title, content, tags, usage_count, custom_order) 
+            VALUES (%s, %s, %s, %s, %s) 
             RETURNING *
         '''
-        rows = execute_query(conn, query, (title, content, json.dumps(tags)))
+        rows = execute_query(conn, query, (title, content, json.dumps(tags), usage_count, custom_order))
         response_data = dict_from_row(rows[0]) if rows else None
     else:
         # SQLite with manual UUID
         response_id = str(uuid.uuid4())
-        query = 'INSERT INTO responses (id, title, content, tags) VALUES (?, ?, ?, ?)'
-        execute_query(conn, query, (response_id, title, content, json.dumps(tags)))
+        query = 'INSERT INTO responses (id, title, content, tags, usage_count, custom_order) VALUES (?, ?, ?, ?, ?, ?)'
+        execute_query(conn, query, (response_id, title, content, json.dumps(tags), usage_count, custom_order))
         
         # Fetch the created record
         rows = execute_query(conn, 'SELECT * FROM responses WHERE id = ?', (response_id,))
@@ -612,6 +616,14 @@ def update_response(response_id: str):
         else:
             updates.append('tags = ?')
             params.append(json.dumps(data['tags']))
+    
+    if 'usage_count' in data:
+        updates.append('usage_count = %s' if is_postgres() else 'usage_count = ?')
+        params.append(data['usage_count'])
+    
+    if 'custom_order' in data:
+        updates.append('custom_order = %s' if is_postgres() else 'custom_order = ?')
+        params.append(data['custom_order'])
     
     if updates:
         if is_postgres():
@@ -692,6 +704,40 @@ def health_check():
             'database_connected': False,
             'error': str(e)
         }), 503
+
+@app.route('/api/responses/<response_id>/use', methods=['POST'])
+def track_usage(response_id: str):
+    """Track usage of a response by incrementing its usage count."""
+    conn = get_db_connection()
+    
+    if is_postgres():
+        query = '''
+            UPDATE responses 
+            SET usage_count = usage_count + 1, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = %s 
+            RETURNING *
+        '''
+        params = (response_id,)
+        rows = execute_query(conn, query, params)
+        response_data = dict_from_row(rows[0]) if rows else None
+    else:
+        query = '''
+            UPDATE responses 
+            SET usage_count = usage_count + 1, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        '''
+        execute_query(conn, query, (response_id,))
+        
+        rows = execute_query(conn, 'SELECT * FROM responses WHERE id = ?', (response_id,))
+        response_data = dict_from_row(rows[0]) if rows else None
+    
+    conn.close()
+    
+    if not response_data:
+        return jsonify({'error': 'Response not found'}), 404
+    
+    return jsonify(response_data)
+
 
 if __name__ == '__main__':
     # Configure logging

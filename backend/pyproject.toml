@@ -1,0 +1,31 @@
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | venv
+  | myenv
+  | env
+  | __pycache__
+  | \.pytest_cache
+  | \.mypy_cache
+  | dist
+  | build
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+
+[tool.pylint.messages_control]
+max-line-length = 100
+disable = [
+    "C0111",  # missing-docstring
+    "C0103",  # invalid-name
+    "R0903",  # too-few-public-methods
+]

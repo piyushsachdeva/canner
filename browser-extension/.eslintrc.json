@@ -1,0 +1,56 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "webextensions": true,
+    "node": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    },
+    "project": "./tsconfig.json"
+  },
+  "plugins": [
+    "@typescript-eslint",
+    "react",
+    "react-hooks"
+  ],
+  "rules": {
+    "indent": ["error", 2, { "SwitchCase": 1 }],
+    "linebreak-style": ["error", "unix"],
+    "quotes": ["error", "double", { "avoidEscape": true }],
+    "semi": ["error", "always"],
+    "no-console": "off",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_"
+    }],
+    "@typescript-eslint/explicit-function-return-type": "off",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-non-null-assertion": "warn",
+    "react/react-in-jsx-scope": "off",
+    "react/prop-types": "off"
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/",
+    "webpack.config.js"
+  ]
+}

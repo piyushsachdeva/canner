@@ -1,0 +1,20 @@
+[flake8]
+max-line-length = 100
+exclude =
+    .git,
+    __pycache__,
+    venv,
+    myenv,
+    .venv,
+    env,
+    dist,
+    build,
+    *.egg-info
+ignore =
+    E203,  # whitespace before ':'
+    E501,  # line too long (handled by max-line-length)
+    W503,  # line break before binary operator
+    E402   # module level import not at top of file
+per-file-ignores =
+    __init__.py:F401
+max-complexity = 10

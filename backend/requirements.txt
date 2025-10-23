@@ -3,4 +3,6 @@ flask-cors==4.0.0
 Werkzeug==3.0.1
 psycopg2-binary==2.9.9
 python-dotenv==1.0.0
+prometheus_flask_exporter==0.23.0
+flasgger==0.9.7.1
 flask-swagger-ui==4.11.1

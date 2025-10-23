@@ -1,4 +1,3 @@
----
 # YAML linting configuration - moderate strictness
 rules:
   # Line length - be reasonable but not too strict

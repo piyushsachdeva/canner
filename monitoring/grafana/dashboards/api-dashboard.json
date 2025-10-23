@@ -1,0 +1,94 @@
+{
+  "id": null,
+  "uid": "api-metrics",
+  "title": "API Metrics Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Requests",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" } },
+      "targets": [
+        {
+          "expr": "sum(flask_http_request_total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Request Rate (req/s)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 6 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" } },
+      "targets": [
+        {
+          "expr": "sum(rate(flask_http_request_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Error Rate (%)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 6 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "orientation": "auto" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "100 * (sum(rate(flask_http_request_total{status=~\"5..\"}[5m])) / sum(rate(flask_http_request_total[5m]))) or 0",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50/p90/p99 (s)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 6 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum(rate(flask_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A" },
+        { "expr": "histogram_quantile(0.9, sum(rate(flask_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(flask_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "C" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by Status Code",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(flask_http_request_total[5m])) by (status)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by Endpoint",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(flask_http_request_total[5m])) by (endpoint)",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

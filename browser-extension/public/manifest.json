@@ -3,6 +3,9 @@
   "name": "Canner",
   "version": "1.0.0",
   "description": "LinkedIn productivity helper with saved responses, templates, and automation",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
     "https://www.linkedin.com/*",

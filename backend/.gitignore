@@ -43,3 +43,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Env
+.env
+.env.development
+.env.production

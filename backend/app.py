@@ -1,14 +1,25 @@
+from flask import Flask, request, jsonify, session, redirect, url_for
+from flask_cors import CORS
+from flasgger import Swagger
+import sqlite3
 import json
 import logging
 import os
 import sqlite3
 import time
 import uuid
+from typing import List, Dict, Any, Optional, Union
+from urllib.parse import urlparse
+import logging
+from dotenv import load_dotenv
+from auth import init_oauth, authenticate_user
+from database import DatabaseService
+from middleware import require_auth, get_current_user_id
+from models import Profile
 from datetime import datetime
-from typing import Any, Dict, Union
 
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+# Load environment variables
+load_dotenv()
 
 # Try to import PostgreSQL driver
 try:
@@ -21,7 +32,29 @@ except ImportError:
     print("⚠️  psycopg2 not available. PostgreSQL support disabled.")
 
 app = Flask(__name__)
-CORS(app)
+app.secret_key = os.getenv('SECRET_KEY', 'fallback-secret-key-change-in-production')
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+
+# Configure CORS to allow credentials from known origins
+allowed_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+CORS(app, supports_credentials=True, origins=[o.strip() for o in allowed_origins])
+
+# Initialize OAuth
+oauth = init_oauth(app)
+print(f"OAuth initialized: {oauth is not None}")
+if oauth:
+    try:
+        google_client = oauth.create_client('google')
+        print(f"Google OAuth client available: {google_client is not None}")
+    except Exception as e:
+        print(f"Error creating Google OAuth client: {e}")
+    
+    try:
+        github_client = oauth.create_client('github')
+        print(f"GitHub OAuth client available: {github_client is not None}")
+    except Exception as e:
+        print(f"Error creating GitHub OAuth client: {e}")
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///responses.db")
@@ -121,6 +154,10 @@ def init_db(max_retries: int = 10):
     """
     for attempt in range(max_retries + 1):
         try:
+            # Use DatabaseService to initialize the database
+            DatabaseService.initialize()
+            
+            db_type = 'PostgreSQL' if is_postgres() else 'SQLite'
             conn = get_db_connection()
 
             if is_postgres():
@@ -201,8 +238,36 @@ def get_responses():
     search = request.args.get("search", "")
 
     conn = get_db_connection()
-
-    if search:
+    
+    # Get active profile for current user if authenticated
+    profile_id = None
+    if 'user_id' in session:
+        user_id = session['user_id']
+        profile = DatabaseService.get_active_profile_by_user_id(user_id)
+        if profile:
+            profile_id = profile.id
+        logging.info(f"User {user_id} active profile: {profile_id} ({profile.profile_name if profile else 'None'})")
+    
+    if search and profile_id:
+        if is_postgres():
+            # PostgreSQL with ILIKE for case-insensitive search and JSONB contains
+            query = '''
+                SELECT * FROM responses 
+                WHERE profile_id = %s AND (title ILIKE %s OR content ILIKE %s OR tags::text ILIKE %s)
+                ORDER BY created_at DESC
+            '''
+            search_term = f'%{search}%'
+            rows = execute_query(conn, query, (profile_id, search_term, search_term, search_term))
+        else:
+            # SQLite with LIKE
+            query = '''
+                SELECT * FROM responses 
+                WHERE profile_id = ? AND (title LIKE ? OR content LIKE ? OR tags LIKE ?)
+                ORDER BY created_at DESC
+            '''
+            search_term = f'%{search}%'
+            rows = execute_query(conn, query, (profile_id, search_term, search_term, search_term))
+    elif search:
         if is_postgres():
             # PostgreSQL with ILIKE for case-insensitive search and JSONB contains
             query = """
@@ -221,9 +286,20 @@ def get_responses():
             """
             search_term = f"%{search}%"
             rows = execute_query(conn, query, (search_term, search_term, search_term))
+    elif profile_id:
+        if is_postgres():
+            rows = execute_query(conn, 'SELECT * FROM responses WHERE profile_id = %s ORDER BY created_at DESC', 
+                               (profile_id,))
+        else:
+            rows = execute_query(conn, 'SELECT * FROM responses WHERE profile_id = ? ORDER BY created_at DESC', 
+                               (profile_id,))
     else:
-        rows = execute_query(conn, "SELECT * FROM responses ORDER BY created_at DESC")
-
+        # If no profile is active, show responses without profile_id (legacy responses)
+        if is_postgres():
+            rows = execute_query(conn, 'SELECT * FROM responses WHERE profile_id IS NULL ORDER BY created_at DESC')
+        else:
+            rows = execute_query(conn, 'SELECT * FROM responses WHERE profile_id IS NULL ORDER BY created_at DESC')
+    
     conn.close()
 
     responses = [dict_from_row(row) for row in rows] if rows else []
@@ -256,31 +332,39 @@ def get_response(response_id: str):
 def create_response():
     """Create a new response."""
     data = request.get_json()
-
-    if not data or "title" not in data or "content" not in data:
-        return jsonify({"error": "Title and content are required"}), 400
-
-    title = data["title"]
-    content = data["content"]
-    tags = data.get("tags", [])
-
+    
+    if not data or 'title' not in data or 'content' not in data:
+        return jsonify({'error': 'Title and content are required'}), 400
+    
+    title = data['title']
+    content = data['content']
+    tags = data.get('tags', [])
+    
+    # Get active profile for current user if authenticated
+    profile_id = None
+    if 'user_id' in session:
+        user_id = session['user_id']
+        profile = DatabaseService.get_active_profile_by_user_id(user_id)
+        if profile:
+            profile_id = profile.id
+    
     conn = get_db_connection()
 
     if is_postgres():
         # PostgreSQL with JSONB and auto-generated UUID
-        query = """
-            INSERT INTO responses (title, content, tags)
-            VALUES (%s, %s, %s)
+        query = '''
+            INSERT INTO responses (title, content, tags, profile_id) 
+            VALUES (%s, %s, %s, %s) 
             RETURNING *
-        """
-        rows = execute_query(conn, query, (title, content, json.dumps(tags)))
+        '''
+        rows = execute_query(conn, query, (title, content, json.dumps(tags), profile_id))
         response_data = dict_from_row(rows[0]) if rows else None
     else:
         # SQLite with manual UUID
         response_id = str(uuid.uuid4())
-        query = "INSERT INTO responses (id, title, content, tags) VALUES (?, ?, ?, ?)"
-        execute_query(conn, query, (response_id, title, content, json.dumps(tags)))
-
+        query = 'INSERT INTO responses (id, title, content, tags, profile_id) VALUES (?, ?, ?, ?, ?)'
+        execute_query(conn, query, (response_id, title, content, json.dumps(tags), profile_id))
+        
         # Fetch the created record
         rows = execute_query(
             conn, "SELECT * FROM responses WHERE id = ?", (response_id,)
@@ -416,21 +500,205 @@ def health_check():
             }
         )
     except Exception as e:
-        return (
-            jsonify(
-                {
-                    "status": "unhealthy",
-                    "timestamp": datetime.now().isoformat(),
-                    "database": "PostgreSQL" if is_postgres() else "SQLite",
-                    "database_connected": False,
-                    "error": str(e),
+        return jsonify({
+            'status': 'unhealthy',
+            'timestamp': datetime.now().isoformat(),
+            'database': 'PostgreSQL' if is_postgres() else 'SQLite',
+            'database_connected': False,
+            'error': str(e)
+        }), 503
+
+# OAuth routes
+@app.route('/api/auth/login/<provider>')
+def oauth_login(provider):
+    """Initiate OAuth login with the specified provider."""
+    if provider not in ['google', 'github']:
+        return jsonify({'error': 'Unsupported provider'}), 400
+    
+    # Check if OAuth is properly initialized
+    if oauth is None:
+        return jsonify({'error': 'OAuth not available'}), 500
+    
+    try:
+        redirect_uri = url_for('oauth_callback', provider=provider, _external=True)
+        return oauth.create_client(provider).authorize_redirect(redirect_uri)
+    except Exception as e:
+        print(f"OAuth login error: {e}")
+        return jsonify({'error': 'OAuth login failed'}), 500
+
+@app.route('/api/auth/callback/<provider>')
+def oauth_callback(provider):
+    """Handle OAuth callback from the provider."""
+    if provider not in ['google', 'github']:
+        return jsonify({'error': 'Unsupported provider'}), 400
+    
+    # Check if OAuth is properly initialized
+    if oauth is None:
+        return jsonify({'error': 'OAuth not available'}), 500
+    
+    try:
+        print(f"Processing OAuth callback for {provider}")
+        token = oauth.create_client(provider).authorize_access_token()
+        print(f"Received token: {token}")
+        
+        # Extract token value
+        token_value = token.get('access_token') if isinstance(token, dict) else token
+        print(f"Token value: {token_value}")
+        
+        user = authenticate_user(provider, token_value)
+        print(f"Authenticated user: {user}")
+        
+        if not user:
+            print("Authentication failed - no user returned")
+            return jsonify({'error': 'Authentication failed'}), 401
+        
+        # Store user info in session
+        session['user_id'] = user.id
+        session['user_provider'] = user.provider
+        session['user_email'] = user.email
+        session['user_name'] = user.name
+        session.permanent = True  # Make session permanent
+        print(f"User session stored: {session}")
+        
+        # Redirect to frontend with success message
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+        return '''
+        <html>
+        <head>
+            <title>Authentication Success</title>
+        </head>
+        <body>
+            <script>
+                // Send message to opener window
+                if (window.opener) {
+                    window.opener.postMessage({"type": "oauth-success"}, "*");
                 }
-            ),
-            503,
+                // Close this window
+                window.close();
+            </script>
+            <div style="text-align: center; padding: 20px;">
+                <h2>Authentication Successful!</h2>
+                <p>You can close this window and return to the application.</p>
+                <button onclick="window.close()">Close Window</button>
+            </div>
+        </body>
+        </html>
+        '''
+        
+    except Exception as e:
+        print(f"OAuth callback error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Authentication failed'}), 500
+
+@app.route('/api/auth/logout')
+def logout():
+    """Logout the current user."""
+    session.clear()
+    return jsonify({'message': 'Logged out successfully'})
+
+# Profile management endpoints
+@app.route('/api/profiles', methods=['GET'])
+@require_auth
+def get_profiles():
+    """Get all profiles for the current user."""
+    user_id = get_current_user_id()
+    profiles = DatabaseService.get_profiles_by_user_id(user_id)
+    return jsonify([profile.to_dict() for profile in profiles])
+
+@app.route('/api/profiles/active', methods=['GET'])
+@require_auth
+def get_active_profile():
+    """Get the active profile for the current user."""
+    user_id = get_current_user_id()
+    profile = DatabaseService.get_active_profile_by_user_id(user_id)
+    if not profile:
+        return jsonify({'error': 'No active profile found'}), 404
+    return jsonify(profile.to_dict())
+
+@app.route('/api/profiles', methods=['POST'])
+@require_auth
+def create_profile():
+    """Create a new profile for the current user."""
+    user_id = get_current_user_id()
+    data = request.get_json()
+    
+    if not data or 'profile_name' not in data or 'topic' not in data:
+        return jsonify({'error': 'Profile name and topic are required'}), 400
+    
+    # Check if this is the first profile for the user
+    existing_profiles = DatabaseService.get_profiles_by_user_id(user_id)
+    is_active = len(existing_profiles) == 0  # Make first profile active by default
+    
+    try:
+        profile = DatabaseService.create_profile(
+            user_id=user_id,
+            profile_name=data['profile_name'],
+            topic=data['topic'],
+            is_active=is_active
         )
+        return jsonify(profile.to_dict()), 201
+    except Exception as e:
+        print(f"Error creating profile: {e}")
+        return jsonify({'error': 'Failed to create profile'}), 500
 
+@app.route('/api/profiles/<profile_id>/activate', methods=['POST'])
+@require_auth
+def activate_profile(profile_id):
+    """Activate a profile for the current user."""
+    user_id = get_current_user_id()
+    profile = DatabaseService.update_profile_active_status(profile_id, user_id, True)
+    
+    if not profile:
+        return jsonify({'error': 'Profile not found or access denied'}), 404
+    
+    return jsonify(profile.to_dict())
 
-if __name__ == "__main__":
+@app.route('/api/profiles/<profile_id>', methods=['DELETE'])
+@require_auth
+def delete_profile(profile_id):
+    """Delete a profile for the current user."""
+    user_id = get_current_user_id()
+    
+    # Check if this is the active profile
+    active_profile = DatabaseService.get_active_profile_by_user_id(user_id)
+    is_active_profile = active_profile and active_profile.id == profile_id
+    
+    success = DatabaseService.delete_profile(profile_id, user_id)
+    
+    if not success:
+        return jsonify({'error': 'Profile not found or access denied'}), 404
+    
+    # If we deleted the active profile, activate the first available profile
+    if is_active_profile:
+        profiles = DatabaseService.get_profiles_by_user_id(user_id)
+        if profiles:
+            # Activate the first profile
+            DatabaseService.update_profile_active_status(profiles[0].id, user_id, True)
+    
+    return '', 204
+
+@app.route('/api/auth/user')
+def get_current_user():
+    """Get the current authenticated user."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    # Get user by actual user ID instead of provider ID
+    user = DatabaseService.get_user_by_id(session['user_id'])
+    
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    return jsonify({
+        'id': user.id,
+        'email': user.email,
+        'name': user.name,
+        'provider': user.provider,
+        'avatar_url': user.avatar_url
+    })
+
+if __name__ == '__main__':
     # Configure logging
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

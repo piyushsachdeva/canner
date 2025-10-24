@@ -85,10 +85,13 @@ export async function saveResponse(response: Response): Promise<Response> {
 
     if (result.ok) {
       const saved = await result.json();
+
       // Update Chrome storage
-      const responses = await getResponses();
-      responses.push(saved);
-      chrome.storage.local.set({ responses });
+      //Fix: fetch from local and .unshift(saved)
+      const { responses } = await chrome.storage.local.get({ responses: [] });
+      responses.unshift(saved);
+      await chrome.storage.local.set({ responses });
+
       return saved;
     }
   } catch (error) {
@@ -107,7 +110,9 @@ export async function saveResponse(response: Response): Promise<Response> {
   return new Promise((resolve) => {
     chrome.storage.local.get(["responses"], (result) => {
       const responses = result.responses || [];
-      responses.push(savedResponse);
+
+      //Fix: use .unshift()
+      responses.unshift(savedResponse);
       chrome.storage.local.set({ responses }, () => {
         resolve(savedResponse);
       });

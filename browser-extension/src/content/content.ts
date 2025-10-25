@@ -106,7 +106,15 @@ class InlineSuggestionManager {
       // Find suggestions that start with the current text
       const matches = suggestions.filter(s => {
         const content = (s.content || s.title || "").toLowerCase();
-        return content.startsWith(currentText.toLowerCase());
+        const currentWords = currentText.toLowerCase().split(/\s+/);
+        
+        // Only show suggestions for first two words
+        if (currentWords.length <= 2) {
+          return content.startsWith(currentText.toLowerCase());
+        } else {
+          // Don't show suggestions after two words are typed
+          return false;
+        }
       });
 
       if (matches.length === 0) {
@@ -153,16 +161,15 @@ class InlineSuggestionManager {
       tempRange.selectNodeContents(this.element);
       tempRange.setEnd(range.endContainer, range.endOffset);
 
+      // Return the full text up to cursor position (not just last word)
       const text = tempRange.cloneContents().textContent || '';
-      // Get the last word
-      const words = text.trim().split(/\s+/);
-      return words[words.length - 1] || '';
+      return text.trim();
     } else if (this.element.tagName === 'TEXTAREA' || this.element.tagName === 'INPUT') {
       const input = this.element as HTMLInputElement | HTMLTextAreaElement;
       const cursorPos = input.selectionStart || 0;
+      // Return the full text up to cursor position (not just last word)
       const text = input.value.substring(0, cursorPos);
-      const words = text.trim().split(/\s+/);
-      return words[words.length - 1] || '';
+      return text.trim();
     }
     return '';
   }
@@ -364,7 +371,7 @@ class InlineSuggestionManager {
     this.clearSuggestion();
   }
 
-  private replaceInContentEditable(fullText: string, _currentText: string) {
+  private replaceInContentEditable(fullText: string, currentText: string) {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
@@ -376,10 +383,12 @@ class InlineSuggestionManager {
     tempRange.setEnd(range.endContainer, range.endOffset);
 
     const currentContent = tempRange.cloneContents().textContent || '';
-    const lastSpaceIndex = currentContent.lastIndexOf(' ');
-    const startIndex = lastSpaceIndex >= 0 ? lastSpaceIndex + 1 : 0;
+    
+    // Find the start of the current typed text within the entire content
+    const startIndex = currentContent.lastIndexOf(currentText);
+    if (startIndex === -1) return; // Current text not found, shouldn't happen
 
-    // Create range to replace the current word
+    // Create range to replace the current text
     const replaceRange = document.createRange();
     replaceRange.setStart(this.element, 0);
 

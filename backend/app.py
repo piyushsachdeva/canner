@@ -1,3 +1,9 @@
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import sqlite3
 import json
 import logging
 import os
@@ -22,6 +28,15 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+
+# Initialize rate limiter
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["1000 per day", "200 per hour"],  # Global default limits
+    storage_uri="memory://",  # In-memory storage (change to redis://localhost:6379 for production)
+    strategy="fixed-window",  # Can be changed to "moving-window" for more accuracy
+)
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///responses.db")
@@ -195,6 +210,9 @@ def dict_from_row(row) -> Dict[str, Any]:
     }
 
 
+
+@app.route('/api/responses', methods=['GET'])
+@limiter.limit("200 per hour")  # Read operations - moderate limit to prevent scraping
 @app.route("/api/responses", methods=["GET"])
 def get_responses():
     """Get all responses, optionally filtered by search query."""
@@ -230,6 +248,9 @@ def get_responses():
     return jsonify(responses)
 
 
+
+@app.route('/api/responses/<response_id>', methods=['GET'])
+@limiter.limit("50 per hour")  # Single read - higher limit, less expensive
 @app.route("/api/responses/<response_id>", methods=["GET"])
 def get_response(response_id: str):
     """Get a single response by ID."""
@@ -252,6 +273,9 @@ def get_response(response_id: str):
     return jsonify(dict_from_row(rows[0]))
 
 
+
+@app.route('/api/responses', methods=['POST'])
+@limiter.limit("50 per hour")  # Write operations - strict limit as specified
 @app.route("/api/responses", methods=["POST"])
 def create_response():
     """Create a new response."""
@@ -295,6 +319,9 @@ def create_response():
     return jsonify(response_data), 201
 
 
+
+@app.route('/api/responses/<response_id>', methods=['PUT'])
+@limiter.limit("50 per hour")  # Update operations - moderate limit
 @app.route("/api/responses/<response_id>", methods=["PUT"])
 def update_response(response_id: str):
     """Update an existing response."""
@@ -366,6 +393,9 @@ def update_response(response_id: str):
     return jsonify(response_data)
 
 
+
+@app.route('/api/responses/<response_id>', methods=['DELETE'])
+@limiter.limit("30 per hour")  # Delete operations - strict limit, destructive action
 @app.route("/api/responses/<response_id>", methods=["DELETE"])
 def delete_response(response_id: str):
     """Delete a response."""
@@ -392,6 +422,8 @@ def delete_response(response_id: str):
     return "", 204
 
 
+@app.route('/api/health', methods=['GET'])
+@limiter.exempt  # Health checks should not be rate limited
 @app.route("/api/health", methods=["GET"])
 def health_check():
     """Health check endpoint with database connectivity test."""
@@ -430,7 +462,22 @@ def health_check():
         )
 
 
+
+# Custom error handler for rate limit exceeded
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Custom handler for rate limit errors."""
+    return jsonify({
+        'error': 'Rate limit exceeded',
+        'message': 'Too many requests. Please try again later.',
+        'retry_after': e.description
+    }), 429
+
+
+if __name__ == '__main__':
+
 if __name__ == "__main__":
+
     # Configure logging
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -445,9 +492,26 @@ if __name__ == "__main__":
         logging.info("🔄 Initializing database...")
         init_db()
 
+        
+        logging.info('🚀 Starting Flask server on http://0.0.0.0:5000')
+        logging.info('🛡️  Rate limiting enabled:')
+        logging.info('   • POST /api/responses: 50 per hour')
+        logging.info('   • PUT /api/responses/<id>: 50 per hour')
+        logging.info('   • DELETE /api/responses/<id>: 30 per hour')
+        logging.info('   • GET /api/responses: 200 per hour')
+        logging.info('   • GET /api/responses/<id>: 50 per hour')
+        
+        app.run(debug=True, host='0.0.0.0', port=5000)
+        
+    except Exception as e:
+        logging.error(f'❌ Failed to start application: {e}')
+        exit(1)
+
+
         logging.info("🚀 Starting Flask server on http://0.0.0.0:5000")
         app.run(debug=True, host="0.0.0.0", port=5000)
 
     except Exception as e:
         logging.error(f"❌ Failed to start application: {e}")
         exit(1)
+

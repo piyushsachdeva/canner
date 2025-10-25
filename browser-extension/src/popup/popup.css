@@ -72,6 +72,8 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
+  /* Make container a positioned ancestor so absolutely positioned children (e.g., notification) stay within bounds */
+  position: relative;
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 

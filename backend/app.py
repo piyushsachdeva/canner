@@ -9,6 +9,16 @@ from typing import Any, Dict, Union
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+from ai_service import AIResponseService, SuggestionContext
+from analytics_service import AnalyticsService
+from cache_service import cache, response_cache, rate_limiter, cached
+from task_service import task_manager
+from api_docs import api_docs_bp, swagger_ui_blueprint
+import hashlib
 
 # Try to import PostgreSQL driver
 try:
@@ -22,6 +32,10 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+
+# Register API documentation blueprints
+app.register_blueprint(api_docs_bp, url_prefix='/api')
+app.register_blueprint(swagger_ui_blueprint, url_prefix='/api/docs')
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///responses.db")
@@ -195,10 +209,44 @@ def dict_from_row(row) -> Dict[str, Any]:
     }
 
 
+# Initialize services after function definitions
+ai_service = AIResponseService()
+analytics_service = AnalyticsService(get_db_connection)
+
+
+@app.route("/")
+def root():
+    """Root endpoint - redirect to API documentation."""
+    return jsonify({
+        "message": "Welcome to Canner API",
+        "version": "1.0.0",
+        "documentation": "/api/docs",
+        "health": "/api/health",
+        "endpoints": {
+            "responses": "/api/responses",
+            "suggestions": "/api/suggestions",
+            "analytics": "/api/analytics/usage",
+            "health": "/api/health"
+        }
+    })
+
+
 @app.route("/api/responses", methods=["GET"])
 def get_responses():
     """Get all responses, optionally filtered by search query."""
     search = request.args.get("search", "")
+    platform = request.args.get("platform", "")
+    user_id = request.headers.get("X-User-ID", "default")
+    
+    # Check rate limiting
+    client_ip = request.remote_addr
+    if not rate_limiter.is_allowed(f"get_responses:{client_ip}", 100, 60):  # 100 requests per minute
+        return jsonify({"error": "Rate limit exceeded"}), 429
+    
+    # Try cache first
+    cached_responses = response_cache.get_responses(search, platform, user_id)
+    if cached_responses is not None:
+        return jsonify(cached_responses)
 
     conn = get_db_connection()
 
@@ -227,6 +275,10 @@ def get_responses():
     conn.close()
 
     responses = [dict_from_row(row) for row in rows] if rows else []
+    
+    # Cache the results
+    response_cache.set_responses(responses, search, platform, user_id, ttl=300)  # 5 minutes
+    
     return jsonify(responses)
 
 
@@ -392,6 +444,315 @@ def delete_response(response_id: str):
     return "", 204
 
 
+@app.route("/api/suggestions", methods=["POST"])
+def get_ai_suggestions():
+    """Get AI-powered response suggestions based on context."""
+    if not ai_service.is_available():
+        return jsonify({"error": "AI service not available"}), 503
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    
+    try:
+        context = SuggestionContext(
+            platform=data.get("platform", "linkedin"),
+            conversation_text=data.get("conversation_text", ""),
+            user_input=data.get("user_input", ""),
+            tone=data.get("tone", "professional"),
+            max_length=data.get("max_length", 280)
+        )
+        
+        suggestions = ai_service.generate_suggestions(context)
+        
+        return jsonify({
+            "suggestions": suggestions,
+            "context": {
+                "platform": context.platform,
+                "tone": context.tone,
+                "max_length": context.max_length
+            }
+        })
+        
+    except Exception as e:
+        logging.error(f"Error generating suggestions: {e}")
+        return jsonify({"error": "Failed to generate suggestions"}), 500
+
+
+@app.route("/api/responses/smart-search", methods=["GET"])
+def smart_search_responses():
+    """Enhanced search with AI-powered relevance scoring."""
+    query = request.args.get("q", "")
+    platform = request.args.get("platform", "")
+    tone = request.args.get("tone", "")
+    
+    if not query:
+        return jsonify({"error": "Query parameter required"}), 400
+    
+    conn = get_db_connection()
+    
+    # Base search query
+    if is_postgres():
+        search_query = """
+            SELECT *, 
+                   ts_rank(to_tsvector('english', title || ' ' || content), plainto_tsquery('english', %s)) as relevance_score
+            FROM responses
+            WHERE to_tsvector('english', title || ' ' || content) @@ plainto_tsquery('english', %s)
+        """
+        params = [query, query]
+        
+        # Add platform filter if specified
+        if platform:
+            search_query += " AND tags::text ILIKE %s"
+            params.append(f"%{platform}%")
+            
+        # Add tone filter if specified  
+        if tone:
+            search_query += " AND tags::text ILIKE %s"
+            params.append(f"%{tone}%")
+            
+        search_query += " ORDER BY relevance_score DESC, created_at DESC LIMIT 20"
+        
+    else:
+        # SQLite fallback
+        search_query = """
+            SELECT * FROM responses
+            WHERE title LIKE ? OR content LIKE ?
+        """
+        search_term = f"%{query}%"
+        params = [search_term, search_term]
+        
+        if platform:
+            search_query += " AND tags LIKE ?"
+            params.append(f"%{platform}%")
+            
+        if tone:
+            search_query += " AND tags LIKE ?"
+            params.append(f"%{tone}%")
+            
+        search_query += " ORDER BY created_at DESC LIMIT 20"
+    
+    rows = execute_query(conn, search_query, params)
+    conn.close()
+    
+    responses = [dict_from_row(row) for row in rows] if rows else []
+    
+    return jsonify({
+        "responses": responses,
+        "query": query,
+        "filters": {"platform": platform, "tone": tone},
+        "total": len(responses)
+    })
+
+
+@app.route("/api/analytics/usage", methods=["GET"])
+def get_usage_analytics():
+    """Get usage analytics for responses."""
+    days = request.args.get("days", 30, type=int)
+    
+    conn = get_db_connection()
+    
+    try:
+        if is_postgres():
+            # Get response usage stats
+            stats_query = """
+                SELECT 
+                    COUNT(*) as total_responses,
+                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '%s days' THEN 1 END) as recent_responses,
+                    AVG(LENGTH(content)) as avg_content_length,
+                    COUNT(DISTINCT tags) as unique_tags
+                FROM responses
+            """
+            stats = execute_query(conn, stats_query, (days,))
+            
+            # Get most popular tags
+            tags_query = """
+                SELECT tag, COUNT(*) as usage_count
+                FROM (
+                    SELECT jsonb_array_elements_text(tags) as tag
+                    FROM responses
+                    WHERE created_at >= NOW() - INTERVAL '%s days'
+                ) tag_counts
+                GROUP BY tag
+                ORDER BY usage_count DESC
+                LIMIT 10
+            """
+            popular_tags = execute_query(conn, tags_query, (days,))
+            
+        else:
+            # SQLite fallback
+            stats_query = """
+                SELECT 
+                    COUNT(*) as total_responses,
+                    AVG(LENGTH(content)) as avg_content_length
+                FROM responses
+            """
+            stats = execute_query(conn, stats_query)
+            popular_tags = []
+        
+        conn.close()
+        
+        analytics = {
+            "period_days": days,
+            "stats": dict_from_row(stats[0]) if stats else {},
+            "popular_tags": [dict_from_row(row) for row in popular_tags] if popular_tags else [],
+            "generated_at": datetime.now().isoformat()
+        }
+        
+        return jsonify(analytics)
+        
+    except Exception as e:
+        conn.close()
+        logging.error(f"Analytics error: {e}")
+        return jsonify({"error": "Failed to generate analytics"}), 500
+
+
+@app.route("/api/suggestions/async", methods=["POST"])
+def get_ai_suggestions_async():
+    """Get AI-powered response suggestions asynchronously."""
+    if not ai_service.is_available():
+        return jsonify({"error": "AI service not available"}), 503
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    
+    user_id = request.headers.get("X-User-ID", "default")
+    
+    # Check if we have cached suggestions for this context
+    context_str = json.dumps(data, sort_keys=True)
+    context_hash = hashlib.md5(context_str.encode()).hexdigest()
+    
+    cached_suggestions = response_cache.get_ai_suggestion(context_hash)
+    if cached_suggestions:
+        return jsonify({
+            "suggestions": cached_suggestions,
+            "cached": True,
+            "context_hash": context_hash
+        })
+    
+    # Submit async task
+    task_id = task_manager.generate_ai_suggestions_async(data, user_id)
+    
+    return jsonify({
+        "task_id": task_id,
+        "status": "submitted",
+        "context_hash": context_hash,
+        "check_url": f"/api/tasks/{task_id}"
+    }), 202
+
+
+@app.route("/api/analytics/async", methods=["GET"])
+def get_analytics_async():
+    """Generate analytics asynchronously."""
+    days = request.args.get("days", 30, type=int)
+    user_id = request.headers.get("X-User-ID", "default")
+    
+    # Submit async task
+    task_id = task_manager.generate_analytics_async(days, user_id)
+    
+    return jsonify({
+        "task_id": task_id,
+        "status": "submitted",
+        "check_url": f"/api/tasks/{task_id}"
+    }), 202
+
+
+@app.route("/api/export", methods=["POST"])
+def export_data():
+    """Export data in various formats."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    
+    export_format = data.get("format", "json").lower()
+    filters = data.get("filters", {})
+    user_id = request.headers.get("X-User-ID", "default")
+    
+    if export_format not in ["json", "csv"]:
+        return jsonify({"error": "Unsupported format. Use 'json' or 'csv'"}), 400
+    
+    # Submit async export task
+    task_id = task_manager.export_data_async(export_format, filters, user_id)
+    
+    return jsonify({
+        "task_id": task_id,
+        "status": "submitted",
+        "format": export_format,
+        "check_url": f"/api/tasks/{task_id}"
+    }), 202
+
+
+@app.route("/api/tasks/<task_id>", methods=["GET"])
+def get_task_status(task_id: str):
+    """Get status of a background task."""
+    result = task_manager.get_task_result(task_id)
+    
+    response_data = {
+        "task_id": task_id,
+        "status": result.status,
+        "created_at": result.created_at.isoformat() if result.created_at else None,
+        "completed_at": result.completed_at.isoformat() if result.completed_at else None
+    }
+    
+    if result.result:
+        response_data["result"] = result.result
+    
+    if result.error:
+        response_data["error"] = result.error
+    
+    return jsonify(response_data)
+
+
+@app.route("/api/tasks/<task_id>", methods=["DELETE"])
+def cancel_task(task_id: str):
+    """Cancel a background task."""
+    success = task_manager.task_service.cancel_task(task_id)
+    
+    if success:
+        return jsonify({"message": "Task cancelled successfully"})
+    else:
+        return jsonify({"error": "Failed to cancel task"}), 400
+
+
+@app.route("/api/cache/stats", methods=["GET"])
+def get_cache_stats():
+    """Get cache performance statistics."""
+    return jsonify(cache.get_stats())
+
+
+@app.route("/api/cache/clear", methods=["POST"])
+def clear_cache():
+    """Clear all cache entries."""
+    success = cache.clear()
+    
+    if success:
+        return jsonify({"message": "Cache cleared successfully"})
+    else:
+        return jsonify({"error": "Failed to clear cache"}), 500
+
+
+@app.route("/api/responses/<response_id>/track", methods=["POST"])
+def track_response_usage(response_id: str):
+    """Track response usage for analytics."""
+    data = request.get_json() or {}
+    action = data.get("action", "used")
+    platform = data.get("platform")
+    user_agent = request.headers.get("User-Agent")
+    
+    try:
+        analytics_service.track_response_usage(response_id, action, platform, user_agent)
+        
+        # Invalidate related caches
+        user_id = request.headers.get("X-User-ID", "default")
+        response_cache.invalidate_user_responses(user_id)
+        
+        return jsonify({"message": "Usage tracked successfully"})
+    except Exception as e:
+        logging.error(f"Failed to track usage: {e}")
+        return jsonify({"error": "Failed to track usage"}), 500
+
+
 @app.route("/api/health", methods=["GET"])
 def health_check():
     """Health check endpoint with database connectivity test."""
@@ -413,6 +774,12 @@ def health_check():
                 "timestamp": datetime.now().isoformat(),
                 "database": "PostgreSQL" if is_postgres() else "SQLite",
                 "database_connected": True,
+                "ai_service_available": ai_service.is_available(),
+                "features": {
+                    "ai_suggestions": ai_service.is_available(),
+                    "smart_search": True,
+                    "analytics": True
+                }
             }
         )
     except Exception as e:
@@ -423,6 +790,7 @@ def health_check():
                     "timestamp": datetime.now().isoformat(),
                     "database": "PostgreSQL" if is_postgres() else "SQLite",
                     "database_connected": False,
+                    "ai_service_available": False,
                     "error": str(e),
                 }
             ),

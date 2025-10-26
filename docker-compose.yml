@@ -25,6 +25,23 @@ services:
       retries: 5
       start_period: 10s
 
+  # Redis for caching and task queue
+  redis:
+    image: redis:7-alpine
+    container_name: canner_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - canner_network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Backend Flask Application
   backend:
     build:
@@ -33,9 +50,12 @@ services:
     container_name: canner_backend
     environment:
       - DATABASE_URL=postgresql://developer:devpassword@postgres:5432/canner_dev
+      - REDIS_URL=redis://redis:6379/0
       - FLASK_ENV=development
       - FLASK_DEBUG=1
       - FLASK_APP=app.py
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama3-8b-8192}
     ports:
       - "5000:5000"
     volumes:
@@ -44,11 +64,62 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - canner_network
     restart: unless-stopped
-    # Self-retryable app - no wait script needed!
     command: ["python", "app.py"]
+
+  # Celery Worker for background tasks
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: canner_celery_worker
+    environment:
+      - DATABASE_URL=postgresql://developer:devpassword@postgres:5432/canner_dev
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama3-8b-8192}
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - canner_network
+    restart: unless-stopped
+    command: ["celery", "-A", "task_service.celery_app", "worker", "--loglevel=info"]
+    profiles:
+      - full
+
+  # Celery Beat for periodic tasks
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: canner_celery_beat
+    environment:
+      - DATABASE_URL=postgresql://developer:devpassword@postgres:5432/canner_dev
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - canner_network
+    restart: unless-stopped
+    command: ["celery", "-A", "task_service.celery_app", "beat", "--loglevel=info"]
+    profiles:
+      - full
 
   # pgAdmin for database management (optional)
   pgadmin:
@@ -73,6 +144,8 @@ volumes:
   postgres_data:
     driver: local
   pgadmin_data:
+    driver: local
+  redis_data:
     driver: local
 
 networks:

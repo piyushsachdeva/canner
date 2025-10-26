@@ -4,3 +4,6 @@ Werkzeug==3.0.1
 psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 flask-swagger-ui==4.11.1
+groq==0.4.1
+redis==5.0.1
+celery==5.3.4

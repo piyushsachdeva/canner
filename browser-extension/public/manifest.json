@@ -9,7 +9,7 @@
     "https://twitter.com/*",
     "https://www.twitter.com/*",
     "https://x.com/*",
-    "https://www.x.com/*"
+    "http://localhost:8000/*"
   ],
   "action": {
     "default_popup": "popup.html",

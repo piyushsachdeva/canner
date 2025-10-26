@@ -17,7 +17,7 @@ const App: React.FC = () => {
   const [notification, setNotification] = useState<string>("");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>("");
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -73,9 +73,11 @@ const App: React.FC = () => {
       const data = await getResponses();
       setResponses(data || []);
     } catch (e) {
-      console.error(e);
+      console.error("❌ Error loading responses:", e);
+      setDebugInfo(`❌ Error: ${e}`);
     } finally {
       setLoading(false);
+      console.log("✅ Loading complete");
     }
   }
 
@@ -333,6 +335,8 @@ const App: React.FC = () => {
             </div>
             <div className="brand-text">
               <h1 className="brand-title">Canner</h1>
+              <p className="brand-subtitle">{responses.length} {responses.length === 1 ? 'response' : 'responses'}</p>
+              {debugInfo && <p style={{fontSize: '10px', color: 'orange'}}>{debugInfo}</p>}
               <p className="brand-subtitle">
                 {responses.length}{" "}
                 {responses.length === 1 ? "response" : "responses"}

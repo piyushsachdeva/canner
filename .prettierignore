@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.tmp/
+.temp/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Editors/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Package managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+
+# Coverage / tests
+coverage/
+.nyc_output/
+
+# Cache
+.eslintcache
+.turbo/
+.pnpm-store/
+.cache/
+
+# Vite specific
+vite.config.*.timestamp-* 
+
+# Misc
+*.local
+*.swp

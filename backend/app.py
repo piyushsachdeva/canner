@@ -7,8 +7,11 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Union
 
-from flask import Flask, jsonify, request
+from flasgger import Swagger
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_flask_exporter import PrometheusMetrics
 
 # Try to import PostgreSQL driver
 try:
@@ -22,6 +25,7 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+metrics = PrometheusMetrics(app)
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///responses.db")
@@ -428,6 +432,12 @@ def health_check():
             ),
             503,
         )
+
+
+@app.route("/metrics")
+def metrics_endpoint():
+    """Explicit Prometheus metrics endpoint."""
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 
 if __name__ == "__main__":

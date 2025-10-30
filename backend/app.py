@@ -10,6 +10,12 @@ from typing import Any, Dict, Union
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+try:
+    from transformers import pipeline as hf_pipeline
+    TRANSFORMERS_AVAILABLE = True
+except Exception:
+    TRANSFORMERS_AVAILABLE = False
+
 # Try to import PostgreSQL driver
 try:
     import psycopg2
@@ -26,6 +32,84 @@ CORS(app)
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///responses.db")
 DATABASE = "responses.db"  # Fallback for SQLite
+
+# Moderation configuration (local pipeline preferred)
+MODERATION_THRESHOLD = 0.5
+
+_moderation_pipe = None
+if TRANSFORMERS_AVAILABLE:
+    try:
+        # Use binary toxic classifier; enable return_all_scores to read toxic score explicitly
+        _moderation_pipe = hf_pipeline(
+            "text-classification", model="unitary/toxic-bert", return_all_scores=True
+        )
+        logging.info("✅ Loaded unitary/toxic-bert moderation pipeline")
+    except Exception as e:
+        logging.warning(f"⚠️ Failed to load moderation pipeline, will use heuristic: {e}")
+        _moderation_pipe = None
+
+
+def _heuristic_toxicity(content: str) -> float:
+    """Very lightweight heuristic toxicity score based on keyword hits.
+
+    Returns score in [0,1]. This is a fallback when no API token is configured.
+    """
+    bad_terms = {
+        "hate",
+        "kill",
+        "stupid",
+        "idiot",
+        "dumb",
+        "trash",
+        "racist",
+        "sexist",
+        "violent",
+        "terror",
+        "harass",
+    }
+    text = (content or "").lower()
+    if not text:
+        return 0.0
+    hits = sum(1 for t in bad_terms if t in text)
+    # Cap denominator to smooth overly short texts
+    denom = max(5, len(text.split()))
+    return min(1.0, hits / denom * 3)
+
+
+def moderate_text(content: str) -> dict:
+    """Run moderation and return dict with status ('SAFE'/'FLAGGED') and score.
+
+    Uses local transformers pipeline when available, otherwise a simple heuristic.
+    """
+    score = 0.0
+    details = {}
+
+    if _moderation_pipe is not None:
+        try:
+            outputs = _moderation_pipe(content)
+            # outputs is typically [[{label: 'toxic', score: x}, {label: 'non-toxic', score: y}]]
+            if isinstance(outputs, list) and outputs and isinstance(outputs[0], list):
+                for item in outputs[0]:
+                    label = str(item.get("label", "")).lower()
+                    s = float(item.get("score", 0.0))
+                    details[label] = s
+                score = details.get("toxic", 0.0)
+            else:
+                # Fallback parse for unexpected structure
+                arr = outputs if isinstance(outputs, list) else []
+                for item in arr:
+                    label = str(item.get("label", "")).lower()
+                    s = float(item.get("score", 0.0))
+                    details[label] = s
+                score = details.get("toxic", 0.0)
+        except Exception as e:
+            logging.warning(f"Moderation pipeline failed, using heuristic: {e}")
+            score = _heuristic_toxicity(content)
+    else:
+        score = _heuristic_toxicity(content)
+
+    status = "FLAGGED" if score >= MODERATION_THRESHOLD else "SAFE"
+    return {"status": status, "score": score, "details": details}
 
 
 def get_db_connection(max_retries: int = 5, base_delay: float = 1.0):
@@ -264,6 +348,19 @@ def create_response():
     content = data["content"]
     tags = data.get("tags", [])
 
+    # Ensure tags is a list
+    if not isinstance(tags, list):
+        try:
+            tags = json.loads(tags) if isinstance(tags, str) else []
+        except Exception:
+            tags = []
+
+    # Run moderation and add status tag
+    mod = moderate_text(content)
+    # Remove any previous status tags just in case
+    tags = [t for t in tags if str(t).upper() not in ("SAFE", "FLAGGED")]
+    tags.append(mod["status"])  # Add SAFE/FLAGGED
+
     conn = get_db_connection()
 
     if is_postgres():
@@ -295,7 +392,7 @@ def create_response():
     return jsonify(response_data), 201
 
 
-@app.route("/api/responses/<response_id>", methods=["PUT"])
+@app.route("/api/responses/<response_id>", methods=["PUT", "PATCH"])
 def update_response(response_id: str):
     """Update an existing response."""
     data = request.get_json()
@@ -326,11 +423,53 @@ def update_response(response_id: str):
         updates.append("title = %s" if is_postgres() else "title = ?")
         params.append(data["title"])
 
+    tags_already_set = False
+
     if "content" in data:
         updates.append("content = %s" if is_postgres() else "content = ?")
         params.append(data["content"])
 
-    if "tags" in data:
+        # If content changes, recompute moderation status and update tags accordingly
+        # Load existing tags from DB to update them
+        existing_tags = []
+        try:
+            if is_postgres():
+                existing_tags = existing[0]["tags"] if existing and existing[0]["tags"] else []
+            else:
+                existing_tags = json.loads(existing[0]["tags"]) if existing and existing[0]["tags"] else []
+        except Exception:
+            existing_tags = []
+
+        if not isinstance(existing_tags, list):
+            existing_tags = []
+
+        # Recompute moderation
+        mod = moderate_text(data["content"])
+        new_tags = [t for t in existing_tags if str(t).upper() not in ("SAFE", "FLAGGED")]
+
+        # If caller also provided tags, merge them (excluding SAFE/FLAGGED)
+        if "tags" in data:
+            incoming_tags = data["tags"]
+            try:
+                if not isinstance(incoming_tags, list):
+                    incoming_tags = json.loads(incoming_tags) if isinstance(incoming_tags, str) else []
+            except Exception:
+                incoming_tags = []
+            incoming_tags = [t for t in incoming_tags if str(t).upper() not in ("SAFE", "FLAGGED")]
+            new_tags = new_tags + incoming_tags
+
+        # Add SAFE/FLAGGED
+        new_tags.append(mod["status"])  # Add SAFE/FLAGGED
+
+        if is_postgres():
+            updates.append("tags = %s::jsonb")
+            params.append(json.dumps(new_tags))
+        else:
+            updates.append("tags = ?")
+            params.append(json.dumps(new_tags))
+        tags_already_set = True
+
+    if "tags" in data and not tags_already_set:
         if is_postgres():
             updates.append("tags = %s::jsonb")
             params.append(json.dumps(data["tags"]))

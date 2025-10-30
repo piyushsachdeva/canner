@@ -496,6 +496,34 @@ const App: React.FC = () => {
               >
                 <div className="card-header">
                   <h3 className="card-title">{r.title}</h3>
+                  {Array.isArray(r.tags) && (
+                    (() => {
+                      const up = r.tags.map((t: string) => String(t).toUpperCase());
+                      const flagged = up.includes("FLAGGED");
+                      const safe = up.includes("SAFE");
+                      if (!flagged && !safe) return null;
+                      const style = flagged
+                        ? { backgroundColor: "#fee2e2", color: "#991b1b" }
+                        : { backgroundColor: "#dcfce7", color: "#166534" };
+                      const label = flagged ? "Flagged" : "Safe";
+                      return (
+                        <span
+                          className="status-badge"
+                          style={{
+                            ...style,
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            marginLeft: 8,
+                            alignSelf: "center",
+                          }}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })()
+                  )}
                   {Array.isArray(r.tags) && r.tags.length > 0 && (
                     <div className="card-tags">
                       {r.tags.slice(0, 2).map((t: string, i: number) => (

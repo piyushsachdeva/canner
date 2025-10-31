@@ -17,6 +17,52 @@ Here’s an overview of how **Canner** works internally:
 
 ![Architecture Diagram](./docs/architecture-diagram.svg)
 
+## 🏗️ Architecture
+
+Canner is built with a modern, scalable architecture:
+
+```mermaid
+graph TB
+    subgraph "Browser Extension"
+        UI[React UI]
+        CS[Content Scripts]
+        BG[Background Worker]
+    end
+    
+    subgraph "Backend Services"
+        API[Flask API]
+        DB[(PostgreSQL)]
+    end
+    
+    subgraph "Social Platforms"
+        LI[LinkedIn]
+        TW[Twitter]
+    end
+    
+    UI <--> BG
+    CS --> LI
+    CS --> TW
+    CS <--> BG
+    BG <-->|REST API| API
+    API <--> DB
+    
+    style UI fill:#61dafb,stroke:#000,stroke-width:3px,color:#000
+    style API fill:#3776ab,stroke:#000,stroke-width:3px,color:#fff
+    style DB fill:#336791,stroke:#000,stroke-width:3px,color:#fff
+    style CS fill:#ffd700,stroke:#000,stroke-width:3px,color:#000
+    style BG fill:#90ee90,stroke:#000,stroke-width:3px,color:#000
+    style LI fill:#0a66c2,stroke:#000,stroke-width:3px,color:#fff
+    style TW fill:#1da1f2,stroke:#000,stroke-width:3px,color:#fff
+```
+
+**📚 For detailed architecture documentation, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+
+Key Components:
+- **Browser Extension** (TypeScript + React): User interface and social media integration
+- **Flask Backend** (Python 3.12): RESTful API with Swagger documentation
+- **PostgreSQL Database**: Persistent storage for response templates
+- **Docker Compose**: Containerized deployment for easy setup
+
 ## 📄 **Contributing**
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.

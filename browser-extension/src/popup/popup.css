@@ -566,6 +566,9 @@ kbd {
 .modal {
   width: 400px;
   max-width: calc(100% - 40px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-secondary);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -573,6 +576,7 @@ kbd {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   animation: scaleIn 0.2s ease-out;
+  overflow: hidden;
 }
 
 @keyframes scaleIn {
@@ -625,6 +629,26 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
 }
 
 .form-group {

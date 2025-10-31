@@ -437,23 +437,49 @@ body {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
+/* New layout: main content on left, actions stacked on right */
+.card-body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-main {
+  flex: 1 1 auto;
+  min-width: 0; /* allow ellipsis */
+  position: relative; /* enable absolute-positioned dropdown inside content area */
+}
+
+.card-main-inner {
+  padding-right: 36px; /* give space so the dropdown toggle doesn't overlap text */
+}
+
 .card-actions {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  align-items: stretch; /* make buttons take full width */
+  flex-shrink: 0;
+  min-width: 110px;
+  margin-left: 8px;
+  padding-left: 8px;
+  padding-top: 0; /* remove any extra space above first button */
+  border-left: 1px solid var(--border);
+  margin-top: -40px;
 }
 
 .btn-action {
-  flex: 1;
+  width: 100%;
+  flex: none; /* avoid equal-height stretching — we want equal widths */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -467,6 +493,11 @@ body {
   cursor: pointer;
   transition: var(--transition);
   color: var(--text-secondary);
+}
+
+/* Ensure no unintended margin above the first action button */
+.card-actions > .btn-action:first-child {
+  margin-top: 0;
 }
 
 .btn-action:hover {
@@ -813,3 +844,100 @@ kbd {
   animation: spin 0.9s linear infinite;
 }
 
+/* Dropdown button only styles */
+.card-main {
+  position: relative;
+}
+
+.card-main-inner {
+  padding-right: 36px;
+}
+
+.btn-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: var(--transition);
+  z-index: 1002;
+  padding: 0;
+}
+
+.btn-more:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.btn-more svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s ease;
+}
+
+.btn-more.open svg {
+  transform: rotate(180deg);
+}
+
+.content-dropdown {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  width: 340px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  z-index: 99999;
+  animation: scaleIn 0.12s ease-out;
+}
+
+.content-dropdown-inner {
+  padding: 12px;
+}
+
+.full-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-height: 220px;
+  overflow: auto;
+  background: transparent;
+  border: none;
+  z-index: 9999;
+}
+
+.dropdown-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+  .content-dropdown {
+    right: 6px;
+    left: 6px;
+    width: auto;
+  }
+}
+.response-card:has(.content-dropdown) {
+  position: relative;
+  z-index: 10005;
+}
+
+.response-card .content-dropdown {
+  z-index: 10006;
+}

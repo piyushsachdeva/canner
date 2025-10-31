@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -301,12 +302,31 @@ const App: React.FC = () => {
     }
   }
 
-  // Removed copy functionality
-  // async function handleCopy(text: string) {
-  //   navigator.clipboard.writeText(text).then(() => {
-  //     setNotification("✓ Copied to clipboard");
-  //   });
-  // }
+  function toggleExpand(id?: string) {
+    if (!id) return;
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Close dropdowns when clicking outside the dropdown or its toggle button
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (expandedIds.size === 0) return;
+      const target = e.target as Element | null;
+      if (!target) return;
+      if (target.closest(".content-dropdown") || target.closest(".btn-more")) {
+        return;
+      }
+      setExpandedIds(new Set());
+    }
+
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [expandedIds]);
 
   return (
     <div className="popup-container">
@@ -499,77 +519,117 @@ const App: React.FC = () => {
                   deletingIds.has(r.id!) ? "sliding-out" : ""
                 }`}
               >
-                <div className="card-header">
-                  <h3 className="card-title">{r.title}</h3>
-                  {Array.isArray(r.tags) && r.tags.length > 0 && (
-                    <div className="card-tags">
-                      {r.tags.slice(0, 2).map((t: string, i: number) => (
-                        <span key={i} className="tag">
-                          {t}
-                        </span>
-                      ))}
-                      {r.tags.length > 2 && (
-                        <span className="tag-more">+{r.tags.length - 2}</span>
-                      )}
+                  <div className="card-header">
+                    <h3 className="card-title">{r.title}</h3>
+                  </div>
+
+                  <div className="card-body">
+                    <div className="card-main">
+                      <div className="card-main-inner">
+                        <p className="card-content">{r.content}</p>
+                        <button
+                          className={`btn-more ${expandedIds.has(r.id!) ? "open" : ""}`}
+                          aria-expanded={expandedIds.has(r.id!)}
+                          aria-label="Show full content"
+                          onClick={() => toggleExpand(r.id)}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M6 9l6 6 6-6"/>
+                          </svg>
+                        </button>
+
+                        {expandedIds.has(r.id!) && (
+                          <div className="content-dropdown" role="dialog" aria-modal="false">
+                            <div className="content-dropdown-inner">
+                              <pre className="full-content" aria-label="Full response content">{r.content}</pre>
+                              <div className="dropdown-actions">
+                                <button
+                                  className="btn-action"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(r.content);
+                                    setNotification("✓ Copied");
+                                    toggleExpand(r.id);
+                                  }}
+                                  aria-label="Copy full content"
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {Array.isArray(r.tags) && r.tags.length > 0 && (
+                          <div className="card-tags">
+                            {r.tags.map((t: string, i: number) => (
+                              <span key={i} className="tag">
+                                {t}
+                              </span>
+                            ))}
+                            {r.tags.length > 2 && (
+                              <span className="tag-more">+{r.tags.length - 2}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-                <p className="card-content">{r.content}</p>
-                <div className="card-actions">
-                  <button
-                    className="btn-action btn-insert"
-                    onClick={() => handleInsert(r.content)}
-                    aria-label="Insert response"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    Insert
-                  </button>
-                  <button
-                    className="btn-action"
-                    onClick={() => openEditModal(r)}
-                    aria-label="Edit response"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" />
-                      <path d="M14.06 4.94l3.75 3.75" />
-                    </svg>
-                    Edit
-                  </button>
-                  <button
-                    className="btn-action btn-delete"
-                    onClick={() => handleDelete(r.id)}
-                    aria-label="Delete response"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
-                    Delete
-                  </button>
-                </div>
+
+                    <div className="card-actions">
+                      <button
+                        className="btn-action btn-insert"
+                        onClick={() => handleInsert(r.content)}
+                        aria-label="Insert response"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Insert
+                      </button>
+                      <button
+                        className="btn-action"
+                        onClick={() => openEditModal(r)}
+                        aria-label="Edit response"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" />
+                          <path d="M14.06 4.94l3.75 3.75" />
+                        </svg>
+                        Edit
+                      </button>
+                      <button
+                        className="btn-action btn-delete"
+                        onClick={() => handleDelete(r.id)}
+                        aria-label="Delete response"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
               </div>
             ))}
           </div>

@@ -152,15 +152,20 @@ const App: React.FC = () => {
       }
     } else {
       // Create flow (existing)
+      setSaving(true);
+      setNotification("⌛ Saving...");
       try {
-        setSaving(true);
-        setNotification("⌛ Saving...");
-        await saveResponse(baseData as Response);
+        // 1. Call our fixed saveResponse
+        const savedItem = await saveResponse(baseData as Response);
+
+        // 2. Optimistic update: Add to front of state, NO `load()`
+        setResponses((currentResponses) => [savedItem, ...currentResponses]);
+
+        // 3. Reset form
         setShowModal(false);
         setTitle("");
         setContent("");
         setTags("");
-        await load();
         setNotification("✓ Response saved successfully");
       } catch (e) {
         console.error(e);

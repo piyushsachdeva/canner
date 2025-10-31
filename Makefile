@@ -15,6 +15,7 @@ help:
 	@echo "  - Docker (optional, for Dockerfile linting)"
 	@echo ""
 	@echo "Available targets:"
+	@echo "  make build         - Build the browser extension"
 	@echo "  make lint-all       - Run all linting checks (frontend + backend + configs)"
 	@echo "  make lint-frontend  - Lint TypeScript/JavaScript code"
 	@echo "  make lint-backend   - Lint Python code (flake8, black, isort)"
@@ -24,6 +25,12 @@ help:
 	@echo "  make fix-configs    - Auto-fix config files (trailing spaces, newlines)"
 	@echo "  make fix-all        - Auto-fix all fixable issues (frontend + backend + configs)"
 	@echo ""
+
+
+
+# Alias for building the extension 
+build:
+	cd "$(dir $(abspath $(lastword $(MAKEFILE_LIST))))browser-extension" && npm run build
 
 # Alias for convenience
 lint: lint-all

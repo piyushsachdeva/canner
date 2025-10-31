@@ -1,12 +1,9 @@
 """
-Database models and initialization for Response Saver
+Database models for Canner application using PostgreSQL
 """
 
 import json
-import sqlite3
 from typing import Any, Dict, List
-
-DATABASE = "responses.db"
 
 
 class Response:
@@ -31,7 +28,7 @@ class Response:
     def to_dict(self) -> Dict[str, Any]:
         """Convert response to dictionary."""
         return {
-            "id": self.id,
+            "id": str(self.id),  # UUID to string
             "title": self.title,
             "content": self.content,
             "tags": self.tags,
@@ -40,13 +37,22 @@ class Response:
         }
 
     @staticmethod
-    def from_db_row(row: sqlite3.Row) -> "Response":
-        """Create Response from database row."""
+    def from_db_row(row: Dict[str, Any]) -> "Response":
+        """Create Response from PostgreSQL database row (RealDictRow).
+        
+        Args:
+            row: Database row from psycopg2.extras.RealDictCursor
+        """
+        # Handle tags - could be list (JSONB) or string (JSON text)
+        tags = row["tags"] if row["tags"] is not None else []
+        if isinstance(tags, str):
+            tags = json.loads(tags)
+            
         return Response(
-            id=row["id"],
+            id=str(row["id"]),  # UUID to string
             title=row["title"],
             content=row["content"],
-            tags=json.loads(row["tags"]) if row["tags"] else [],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
+            tags=tags,
+            created_at=str(row["created_at"]) if row["created_at"] else None,
+            updated_at=str(row["updated_at"]) if row["updated_at"] else None,
         )

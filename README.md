@@ -1,4 +1,4 @@
-# Canner - AI-Powered LinkedIn & Twitter Assistant
+# CannerAI - AI-Powered LinkedIn & Twitter Assistant
 
 > 🚀 A sophisticated browser extension and backend system that enhances your social media productivity with AI-powered response suggestions and seamless content management.
 

@@ -4,7 +4,7 @@ services:
   # Development container
   devcontainer:
     build:
-      context: .
+      context: ..
       dockerfile: .devcontainer/Dockerfile
     container_name: canner_devcontainer
     environment:
@@ -12,18 +12,12 @@ services:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
     volumes:
-      - .:/workspace:cached
+      - ..:/workspace:cached
     command: sleep infinity
     networks:
-      - canner_network
-    depends_on:
-      postgres:
-        condition: service_healthy
-  
-  # Ensure PostgreSQL runs
-  postgres:
-    profiles: []
-  
-  # Ensure pgAdmin runs  
-  pgadmin:
-    profiles: []
+      - network
+
+networks:
+  network:
+    external: true
+    name: cannerai_network

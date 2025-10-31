@@ -1,120 +1,74 @@
 import json
 import logging
 import os
-import sqlite3
 import time
-import uuid
 from datetime import datetime
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
+import psycopg2
+import psycopg2.extras
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-
-# Try to import PostgreSQL driver
-try:
-    import psycopg2
-    import psycopg2.extras
-
-    POSTGRES_AVAILABLE = True
-except ImportError:
-    POSTGRES_AVAILABLE = False
-    print("⚠️  psycopg2 not available. PostgreSQL support disabled.")
 
 app = Flask(__name__)
 CORS(app)
 
-# Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///responses.db")
-DATABASE = "responses.db"  # Fallback for SQLite
 
 
 def get_db_connection(max_retries: int = 5, base_delay: float = 1.0):
-    """Create a database connection with automatic retry logic.
+    """Create a PostgreSQL database connection with automatic retry logic.
 
     Args:
         max_retries: Maximum number of connection attempts
         base_delay: Base delay between retries (exponential backoff)
     """
-    db_url = os.getenv("DATABASE_URL", "sqlite:///responses.db")
+    db_url = os.getenv("DATABASE_URL", "postgresql://developer:devpassword@postgres:5432/canner_dev")
 
-    if db_url.startswith("postgresql://") or db_url.startswith("postgres://"):
-        if not POSTGRES_AVAILABLE:
-            raise ImportError("PostgreSQL URL provided but psycopg2 not installed")
+    # PostgreSQL connection with retry logic
+    for attempt in range(max_retries + 1):
+        try:
+            conn = psycopg2.connect(db_url)
+            conn.autocommit = True
 
-        # PostgreSQL connection with retry logic
-        for attempt in range(max_retries + 1):
-            try:
-                conn = psycopg2.connect(db_url)
-                conn.autocommit = True
+            # Test the connection
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
 
-                # Test the connection
-                cursor = conn.cursor()
-                cursor.execute("SELECT 1")
-                cursor.close()
-
-                if attempt > 0:
-                    logging.info(
-                        f"✅ PostgreSQL connection established after {attempt} retries"
-                    )
-                return conn
-
-            except (psycopg2.OperationalError, psycopg2.DatabaseError) as e:
-                if attempt == max_retries:
-                    logging.error(
-                        f"❌ Failed to connect to PostgreSQL after {max_retries} attempts: {e}"
-                    )
-                    raise
-
-                delay = base_delay * (2**attempt)  # Exponential backoff
-                logging.warning(
-                    f"⚠️  PostgreSQL connection attempt {attempt + 1} failed, retrying in {delay}s: {e}"
+            if attempt > 0:
+                logging.info(
+                    f"✅ PostgreSQL connection established after {attempt} retries"
                 )
-                time.sleep(delay)
-    else:
-        # SQLite connection (default) - no retry needed for local files
-        # Extract path from URL if it's a sqlite:// URL, otherwise use as-is
-        if db_url.startswith("sqlite:///"):
-            db_path = db_url[10:]  # Remove 'sqlite:///' prefix
-        elif db_url.startswith("sqlite://"):
-            db_path = db_url[9:]  # Remove 'sqlite://' prefix
-        else:
-            db_path = db_url
+            return conn
 
-        # Ensure directory exists for SQLite
-        os.makedirs(
-            os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True
-        )
+        except (psycopg2.OperationalError, psycopg2.DatabaseError) as e:
+            if attempt == max_retries:
+                logging.error(
+                    f"❌ Failed to connect to PostgreSQL after {max_retries} attempts: {e}"
+                )
+                raise
 
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+            delay = base_delay * (2**attempt)  # Exponential backoff
+            logging.warning(
+                f"⚠️  PostgreSQL connection attempt {attempt + 1} failed, retrying in {delay}s: {e}"
+            )
+            time.sleep(delay)
 
 
-def is_postgres():
-    """Check if we're using PostgreSQL."""
-    db_url = os.getenv("DATABASE_URL", "sqlite:///responses.db")
-    return db_url.startswith("postgresql://") or db_url.startswith("postgres://")
-
-
-def execute_query(conn, query: str, params: tuple = ()) -> Union[list, None]:
-    """Execute a query with proper cursor handling for both SQLite and PostgreSQL."""
-    if is_postgres():
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute(query, params)
-        # Handle both SELECT and RETURNING clauses
-        if query.strip().upper().startswith("SELECT") or "RETURNING" in query.upper():
-            return cursor.fetchall()
-        return None
-    else:
-        cursor = conn.execute(query, params)
-        if query.strip().upper().startswith("SELECT"):
-            return cursor.fetchall()
-        conn.commit()
-        return None
+def execute_query(conn, query: str, params: tuple = ()):
+    """Execute a query with proper cursor handling for PostgreSQL."""
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute(query, params)
+    # Handle both SELECT and RETURNING clauses
+    if query.strip().upper().startswith("SELECT") or "RETURNING" in query.upper():
+        return cursor.fetchall()
+    return None
 
 
 def init_db(max_retries: int = 10):
     """Initialize the database with required tables.
+    
+    Note: Schema is typically created via init.sql, this verifies connectivity.
 
     Args:
         max_retries: Maximum number of initialization attempts
@@ -123,41 +77,19 @@ def init_db(max_retries: int = 10):
         try:
             conn = get_db_connection()
 
-            if is_postgres():
-                # PostgreSQL schema
-                query = """
-                    CREATE TABLE IF NOT EXISTS responses (
-                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        title VARCHAR(255) NOT NULL,
-                        content TEXT NOT NULL,
-                        tags JSONB DEFAULT '[]'::jsonb,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-                """
-            else:
-                # SQLite schema
-                query = """
-                    CREATE TABLE IF NOT EXISTS responses (
-                        id TEXT PRIMARY KEY,
-                        title TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        tags TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """
-
-            execute_query(conn, query)
+            # Verify the responses table exists (created via init.sql)
+            query = "SELECT COUNT(*) FROM responses"
+            cursor = conn.cursor()
+            cursor.execute(query)
+            cursor.close()
             conn.close()
 
-            db_type = "PostgreSQL" if is_postgres() else "SQLite"
             if attempt > 0:
                 logging.info(
-                    f"✅ Database initialized ({db_type}) after {attempt} retries"
+                    f"✅ Database initialized (PostgreSQL) after {attempt} retries"
                 )
             else:
-                logging.info(f"✅ Database initialized ({db_type})")
+                logging.info("✅ Database initialized (PostgreSQL)")
             return
 
         except Exception as e:
@@ -175,18 +107,14 @@ def init_db(max_retries: int = 10):
 
 
 def dict_from_row(row) -> Dict[str, Any]:
-    """Convert a database row to a dictionary."""
-    if is_postgres():
-        # PostgreSQL RealDictRow - tags is already JSONB (list/dict)
-        tags = row["tags"] if row["tags"] is not None else []
-        if isinstance(tags, str):
-            tags = json.loads(tags)
-    else:
-        # SQLite Row - tags is JSON string
-        tags = json.loads(row["tags"]) if row["tags"] else []
+    """Convert a PostgreSQL database row to a dictionary."""
+    # PostgreSQL RealDictRow - tags is already JSONB (list/dict)
+    tags = row["tags"] if row["tags"] is not None else []
+    if isinstance(tags, str):
+        tags = json.loads(tags)
 
     return {
-        "id": str(row["id"]),  # Ensure ID is always string for consistency
+        "id": str(row["id"]),  # UUID to string for JSON
         "title": row["title"],
         "content": row["content"],
         "tags": tags,
@@ -203,24 +131,14 @@ def get_responses():
     conn = get_db_connection()
 
     if search:
-        if is_postgres():
-            # PostgreSQL with ILIKE for case-insensitive search and JSONB contains
-            query = """
-                SELECT * FROM responses
-                WHERE title ILIKE %s OR content ILIKE %s OR tags::text ILIKE %s
-                ORDER BY created_at DESC
-            """
-            search_term = f"%{search}%"
-            rows = execute_query(conn, query, (search_term, search_term, search_term))
-        else:
-            # SQLite with LIKE
-            query = """
-                SELECT * FROM responses
-                WHERE title LIKE ? OR content LIKE ? OR tags LIKE ?
-                ORDER BY created_at DESC
-            """
-            search_term = f"%{search}%"
-            rows = execute_query(conn, query, (search_term, search_term, search_term))
+        # PostgreSQL with ILIKE for case-insensitive search
+        query = """
+            SELECT * FROM responses
+            WHERE title ILIKE %s OR content ILIKE %s OR tags::text ILIKE %s
+            ORDER BY created_at DESC
+        """
+        search_term = f"%{search}%"
+        rows = execute_query(conn, query, (search_term, search_term, search_term))
     else:
         rows = execute_query(conn, "SELECT * FROM responses ORDER BY created_at DESC")
 
@@ -235,14 +153,9 @@ def get_response(response_id: str):
     """Get a single response by ID."""
     conn = get_db_connection()
 
-    if is_postgres():
-        # PostgreSQL uses UUID type
-        query = "SELECT * FROM responses WHERE id = %s"
-        rows = execute_query(conn, query, (response_id,))
-    else:
-        # SQLite uses TEXT
-        query = "SELECT * FROM responses WHERE id = ?"
-        rows = execute_query(conn, query, (response_id,))
+    # PostgreSQL uses UUID type
+    query = "SELECT * FROM responses WHERE id = %s"
+    rows = execute_query(conn, query, (response_id,))
 
     conn.close()
 
@@ -266,26 +179,14 @@ def create_response():
 
     conn = get_db_connection()
 
-    if is_postgres():
-        # PostgreSQL with JSONB and auto-generated UUID
-        query = """
-            INSERT INTO responses (title, content, tags)
-            VALUES (%s, %s, %s)
-            RETURNING *
-        """
-        rows = execute_query(conn, query, (title, content, json.dumps(tags)))
-        response_data = dict_from_row(rows[0]) if rows else None
-    else:
-        # SQLite with manual UUID
-        response_id = str(uuid.uuid4())
-        query = "INSERT INTO responses (id, title, content, tags) VALUES (?, ?, ?, ?)"
-        execute_query(conn, query, (response_id, title, content, json.dumps(tags)))
-
-        # Fetch the created record
-        rows = execute_query(
-            conn, "SELECT * FROM responses WHERE id = ?", (response_id,)
-        )
-        response_data = dict_from_row(rows[0]) if rows else None
+    # PostgreSQL with JSONB and auto-generated UUID via RETURNING
+    query = """
+        INSERT INTO responses (title, content, tags)
+        VALUES (%s, %s, %s)
+        RETURNING *
+    """
+    rows = execute_query(conn, query, (title, content, json.dumps(tags)))
+    response_data = dict_from_row(rows[0]) if rows else None
 
     conn.close()
 
@@ -295,9 +196,9 @@ def create_response():
     return jsonify(response_data), 201
 
 
-@app.route("/api/responses/<response_id>", methods=["PUT"])
+@app.route("/api/responses/<response_id>", methods=["PATCH"])
 def update_response(response_id: str):
-    """Update an existing response."""
+    """Update an existing response (partial update)."""
     data = request.get_json()
 
     if not data:
@@ -306,14 +207,9 @@ def update_response(response_id: str):
     conn = get_db_connection()
 
     # Check if response exists
-    if is_postgres():
-        check_query = "SELECT * FROM responses WHERE id = %s"
-        check_params = (response_id,)
-    else:
-        check_query = "SELECT * FROM responses WHERE id = ?"
-        check_params = (response_id,)
-
-    existing = execute_query(conn, check_query, check_params)
+    check_query = "SELECT * FROM responses WHERE id = %s"
+    existing = execute_query(conn, check_query, (response_id,))
+    
     if not existing:
         conn.close()
         return jsonify({"error": "Response not found"}), 404
@@ -323,41 +219,25 @@ def update_response(response_id: str):
     params = []
 
     if "title" in data:
-        updates.append("title = %s" if is_postgres() else "title = ?")
+        updates.append("title = %s")
         params.append(data["title"])
 
     if "content" in data:
-        updates.append("content = %s" if is_postgres() else "content = ?")
+        updates.append("content = %s")
         params.append(data["content"])
 
     if "tags" in data:
-        if is_postgres():
-            updates.append("tags = %s::jsonb")
-            params.append(json.dumps(data["tags"]))
-        else:
-            updates.append("tags = ?")
-            params.append(json.dumps(data["tags"]))
+        updates.append("tags = %s::jsonb")
+        params.append(json.dumps(data["tags"]))
 
     if updates:
-        if is_postgres():
-            updates.append("updated_at = CURRENT_TIMESTAMP")
-            query = (
-                f'UPDATE responses SET {", ".join(updates)} WHERE id = %s RETURNING *'
-            )
-            params.append(response_id)
-            rows = execute_query(conn, query, params)
-            response_data = dict_from_row(rows[0]) if rows else None
-        else:
-            updates.append("updated_at = CURRENT_TIMESTAMP")
-            query = f'UPDATE responses SET {", ".join(updates)} WHERE id = ?'
-            params.append(response_id)
-            execute_query(conn, query, params)
-
-            # Fetch updated record
-            rows = execute_query(
-                conn, "SELECT * FROM responses WHERE id = ?", (response_id,)
-            )
-            response_data = dict_from_row(rows[0]) if rows else None
+        # PostgreSQL automatically updates updated_at via trigger
+        query = (
+            f'UPDATE responses SET {", ".join(updates)} WHERE id = %s RETURNING *'
+        )
+        params.append(response_id)
+        rows = execute_query(conn, query, params)
+        response_data = dict_from_row(rows[0]) if rows else None
     else:
         response_data = dict_from_row(existing[0])
 
@@ -372,14 +252,9 @@ def delete_response(response_id: str):
     conn = get_db_connection()
 
     # Check if response exists
-    if is_postgres():
-        check_query = "SELECT * FROM responses WHERE id = %s"
-        delete_query = "DELETE FROM responses WHERE id = %s"
-        params = (response_id,)
-    else:
-        check_query = "SELECT * FROM responses WHERE id = ?"
-        delete_query = "DELETE FROM responses WHERE id = ?"
-        params = (response_id,)
+    check_query = "SELECT * FROM responses WHERE id = %s"
+    delete_query = "DELETE FROM responses WHERE id = %s"
+    params = (response_id,)
 
     existing = execute_query(conn, check_query, params)
     if not existing:
@@ -398,20 +273,15 @@ def health_check():
     try:
         # Test database connection
         conn = get_db_connection(max_retries=1)  # Quick test, don't wait long
-        cursor = conn.cursor() if is_postgres() else conn
-
-        if is_postgres():
-            cursor.execute("SELECT 1")
-        else:
-            cursor.execute("SELECT 1")
-
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
         conn.close()
 
         return jsonify(
             {
                 "status": "healthy",
                 "timestamp": datetime.now().isoformat(),
-                "database": "PostgreSQL" if is_postgres() else "SQLite",
+                "database": "PostgreSQL",
                 "database_connected": True,
             }
         )
@@ -421,7 +291,7 @@ def health_check():
                 {
                     "status": "unhealthy",
                     "timestamp": datetime.now().isoformat(),
-                    "database": "PostgreSQL" if is_postgres() else "SQLite",
+                    "database": "PostgreSQL",
                     "database_connected": False,
                     "error": str(e),
                 }
@@ -437,7 +307,7 @@ if __name__ == "__main__":
     )
 
     # Show which database we're using
-    db_url = os.getenv("DATABASE_URL", "sqlite:///responses.db")
+    db_url = os.getenv("DATABASE_URL", "postgresql://developer:devpassword@postgres:5432/canner_dev")
     logging.info(f"🔧 Using DATABASE_URL: {db_url}")
 
     try:

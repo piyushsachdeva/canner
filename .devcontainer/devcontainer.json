@@ -3,10 +3,10 @@
 
   "build": {
     "dockerfile": "Dockerfile",
-    "context": "."
+    "context": ".."
   },
 
-  "runArgs": ["--network=canner_canner_network"],
+  "runArgs": ["--network=cannerai_network"],
 
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",

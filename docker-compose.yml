@@ -1,5 +1,7 @@
 version: "3.8"
 
+name: cannerai
+
 services:
   # PostgreSQL Database
   postgres:
@@ -17,7 +19,7 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
     networks:
-      - canner_network
+      - network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U developer -d canner_dev"]
       interval: 10s
@@ -45,7 +47,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - canner_network
+      - network
     restart: unless-stopped
     # Self-retryable app - no wait script needed!
     command: ["python", "app.py"]
@@ -65,7 +67,7 @@ services:
     depends_on:
       - postgres
     networks:
-      - canner_network
+      - network
     profiles:
       - admin
 
@@ -76,5 +78,5 @@ volumes:
     driver: local
 
 networks:
-  canner_network:
+  network:
     driver: bridge

@@ -572,6 +572,9 @@ kbd {
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  display: flex;              /* allow header/body/footer layout */
+  flex-direction: column;     /* stack modal sections vertically */
+  max-height: calc(100% - 40px); /* keep modal within popup viewport with margin */
   animation: scaleIn 0.2s ease-out;
 }
 
@@ -625,6 +628,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;           /* enable scrolling when content grows */
 }
 
 .form-group {
@@ -671,6 +675,7 @@ kbd {
   resize: vertical;
   min-height: 120px;
   line-height: 1.6;
+  max-height: 60vh;           /* prevent textarea from pushing footer off-screen */
 }
 
 .modal-footer {

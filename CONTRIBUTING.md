@@ -334,10 +334,65 @@ We follow the GitHub Flow for contributions. Here's the proper workflow:
 
 - **Go to your fork** on GitHub
 - **Click "Compare & pull request"** button
-- **Fill in the PR details:**
-  - Provide a clear description of your changes
-  - Reference any related issues (e.g., "Fixes #123")
-  - Add screenshots or videos for UI changes
+- **Fill in the PR details using our template below**
+
+When creating a pull request, please use the following template:
+
+```markdown
+### Description
+
+Provide a clear and concise description of your changes.
+
+### Summary of Changes
+
+List the key changes made in this PR:
+
+- Change 1
+- Change 2
+
+### Motivation and Context
+
+Why is this change needed? What problem does it solve?
+
+### Related Issues
+
+Link any related issues using "Fixes #123" or "Related to #456"
+
+### Type of Change
+
+Check all that apply:
+
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Breaking change (fix or feature causing existing functionality to change)
+- [ ] Documentation update
+- [ ] Code refactor
+- [ ] Style update
+- [ ] Test update
+
+### Testing Instructions
+
+Steps to test these changes:
+
+1. First step
+2. Second step
+3. Third step
+
+### Screenshots/Recordings
+
+If applicable, add screenshots or recordings to demonstrate the changes.
+
+### Contributor Checklist
+
+- [ ] My code follows the project's coding style
+- [ ] I have tested my changes thoroughly
+- [ ] I have updated the documentation
+- [ ] All tests are passing
+- [ ] I have added/updated tests for my changes
+- [ ] My changes generate no new warnings
+```
+
+When creating your PR, use this template to provide a clear and comprehensive overview of your changes. Not all sections may be relevant to every PR - feel free to omit those that don't apply.
 
 ### 9. Respond to Feedback
 

@@ -686,6 +686,46 @@ function positionPenButton(
 ): void {
   document.body.appendChild(penButton);
 
+  // Create a persistent minimized dot that stays visible when the main button hides
+  const dot = document.createElement('div');
+  dot.className = 'social-helper-dot';
+  dot.title = penButton.title;
+  // Accessibility: make the dot focusable and announceable
+  dot.setAttribute('tabindex', '0');
+  dot.setAttribute('role', 'button');
+  dot.setAttribute('aria-label', 'Open Quick Responses');
+  dot.setAttribute('aria-expanded', 'false');
+  document.body.appendChild(dot);
+
+  // Clicking the dot opens the quick response menu
+  dot.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showResponseMenu(inputElement as HTMLElement, penButton);
+  });
+
+  // Keyboard: open menu on Enter or Space
+  dot.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      showResponseMenu(inputElement as HTMLElement, penButton);
+    }
+  });
+
+  // Hovering the dot will show the full pen button
+  dot.addEventListener('mouseenter', () => {
+    clearTimeout(hideTimeout);
+    showPenButton();
+  });
+
+  // Keep the dot visible as a fallback when pen is hidden
+  const showDot = () => {
+    dot.classList.add('visible');
+  };
+
+  const hideDot = () => {
+    dot.classList.remove('visible');
+  };
   let isVisible = false;
   let showTimeout: number;
   let hideTimeout: number;
@@ -727,6 +767,12 @@ function positionPenButton(
     penButton.style.top = `${top}px`;
     penButton.style.right = `${right}px`;
     penButton.style.zIndex = "10000";
+
+    // Position the minimized dot in the same place as the pen (fallback)
+    dot.style.position = 'fixed';
+    dot.style.top = `${top}px`;
+    dot.style.right = `${right}px`;
+    dot.style.zIndex = '10000';
   };
 
   const showPenButton = () => {
@@ -739,6 +785,9 @@ function positionPenButton(
         updatePosition();
         penButton.classList.remove("hiding");
         penButton.classList.add("visible");
+        hideDot();
+        // update aria state
+        try { penButton.setAttribute('aria-expanded', 'true'); } catch (e) {}
         isVisible = true;
       }
     }, 200);
@@ -758,6 +807,9 @@ function positionPenButton(
         penButton.classList.remove("visible");
         penButton.classList.add("hiding");
         isVisible = false;
+        // When hiding the main button, show the persistent dot so users can find the action
+        showDot();
+        try { penButton.setAttribute('aria-expanded', 'false'); } catch (e) {}
       }
     }, 1500);
   };
@@ -787,6 +839,16 @@ function positionPenButton(
     clearTimeout(hideTimeout);
   });
 
+  // Hide the dot when user interacts with the pen button area
+  penButton.addEventListener('mouseenter', () => {
+    hideDot();
+  });
+
+  // Ensure dot is removed when the pen button is removed
+  const cleanup = () => {
+    dot.remove();
+  };
+
   penButton.addEventListener("mouseleave", hidePenButton);
 
   // Clean up listeners when element is removed
@@ -802,6 +864,7 @@ function positionPenButton(
           window.removeEventListener("scroll", updateHandler);
           window.removeEventListener("resize", updateHandler);
           penButton.remove();
+          cleanup();
           observer.disconnect();
         }
       });
@@ -833,6 +896,9 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
   const existingMenu = document.querySelector(".social-helper-menu");
   if (existingMenu) {
     existingMenu.remove();
+    try { button.setAttribute('aria-expanded', 'false'); } catch (e) {}
+    const dotEl = document.querySelector('.social-helper-dot') as HTMLElement | null;
+    if (dotEl) dotEl.setAttribute('aria-expanded', 'false');
     return;
   }
 
@@ -903,6 +969,26 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
   }
 
   document.body.appendChild(menu);
+
+  // Set aria-expanded and ensure keyboard users are notified
+  try { button.setAttribute('aria-expanded', 'true'); } catch (e) {}
+  const dotEl = document.querySelector('.social-helper-dot') as HTMLElement | null;
+  if (dotEl) dotEl.setAttribute('aria-expanded', 'true');
+
+  // When the menu is removed, clear aria-expanded on the trigger(s)
+  const clearAria = () => {
+    try { button.setAttribute('aria-expanded', 'false'); } catch (e) {}
+    const d = document.querySelector('.social-helper-dot') as HTMLElement | null;
+    if (d) d.setAttribute('aria-expanded', 'false');
+  };
+
+  const menuObserver = new MutationObserver(() => {
+    if (!document.body.contains(menu)) {
+      clearAria();
+      menuObserver.disconnect();
+    }
+  });
+  menuObserver.observe(document.body, { childList: true, subtree: true });
 
   // Add theme toggle functionality
   const themeToggle = menu.querySelector(".sh-theme-toggle") as HTMLButtonElement;

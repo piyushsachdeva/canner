@@ -21,6 +21,32 @@
   backdrop-filter: blur(8px);
 }
 
+/* Persistent minimized dot visible when the main pen hides */
+.social-helper-dot {
+  position: fixed;
+  width: 14px;
+  height: 14px;
+  background: rgba(29, 161, 242, 0.95);
+  border: 2px solid rgba(255,255,255,0.9);
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.16);
+  z-index: 10000;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.social-helper-dot.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.social-helper-dot:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(29,161,242,0.12);
+}
+
 /* Inline ghost suggestion shown after caret (grey completion) */
 .canner-ghost-suggestion,
 .sh-inline-suggestion {

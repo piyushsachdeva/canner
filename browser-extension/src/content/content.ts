@@ -103,10 +103,35 @@ class InlineSuggestionManager {
         return;
       }
 
-      // Find suggestions that start with the current text
+      // Enhanced suggestion logic: show suggestions for any partial match
       const matches = suggestions.filter(s => {
         const content = (s.content || s.title || "").toLowerCase();
-        return content.startsWith(currentText.toLowerCase());
+        const currentLower = currentText.toLowerCase();
+        
+        // Check if any saved message starts with the current text
+        if (content.startsWith(currentLower)) {
+          return true;
+        }
+        
+        // Check if current text matches any part of a saved message (word-level matching)
+        const currentWords = currentLower.split(/\s+/).filter(word => word.length > 0);
+        const savedWords = content.split(/\s+/);
+        
+        // Find if current text matches the beginning of any sequence in the saved message
+        for (let i = 0; i <= savedWords.length - currentWords.length; i++) {
+          let matches = true;
+          for (let j = 0; j < currentWords.length; j++) {
+            if (!savedWords[i + j].startsWith(currentWords[j])) {
+              matches = false;
+              break;
+            }
+          }
+          if (matches) {
+            return true;
+          }
+        }
+        
+        return false;
       });
 
       if (matches.length === 0) {
@@ -153,16 +178,15 @@ class InlineSuggestionManager {
       tempRange.selectNodeContents(this.element);
       tempRange.setEnd(range.endContainer, range.endOffset);
 
+      // Return the full text up to cursor position (not just last word)
       const text = tempRange.cloneContents().textContent || '';
-      // Get the last word
-      const words = text.trim().split(/\s+/);
-      return words[words.length - 1] || '';
+      return text.trim();
     } else if (this.element.tagName === 'TEXTAREA' || this.element.tagName === 'INPUT') {
       const input = this.element as HTMLInputElement | HTMLTextAreaElement;
       const cursorPos = input.selectionStart || 0;
+      // Return the full text up to cursor position (not just last word)
       const text = input.value.substring(0, cursorPos);
-      const words = text.trim().split(/\s+/);
-      return words[words.length - 1] || '';
+      return text.trim();
     }
     return '';
   }
@@ -172,10 +196,32 @@ class InlineSuggestionManager {
       chrome.storage.local.get(['responses'], (result) => {
         const responses = result.responses || [];
         const prefixLower = prefix.toLowerCase();
+        const currentWords = prefixLower.split(/\s+/).filter(word => word.length > 0);
 
         const matches = responses.filter((response: any) => {
           const content = (response.content || response.title || "").toLowerCase();
-          return content.startsWith(prefixLower);
+          const savedWords = content.split(/\s+/);
+          
+          // Check if any saved message starts with the current text
+          if (content.startsWith(prefixLower)) {
+            return true;
+          }
+          
+          // Check if current text matches any part of a saved message (word-level matching)
+          for (let i = 0; i <= savedWords.length - currentWords.length; i++) {
+            let matches = true;
+            for (let j = 0; j < currentWords.length; j++) {
+              if (!savedWords[i + j].startsWith(currentWords[j])) {
+                matches = false;
+                break;
+              }
+            }
+            if (matches) {
+              return true;
+            }
+          }
+          
+          return false;
         });
 
         resolve(matches);
@@ -364,7 +410,7 @@ class InlineSuggestionManager {
     this.clearSuggestion();
   }
 
-  private replaceInContentEditable(fullText: string, _currentText: string) {
+  private replaceInContentEditable(fullText: string, currentText: string) {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
@@ -376,10 +422,12 @@ class InlineSuggestionManager {
     tempRange.setEnd(range.endContainer, range.endOffset);
 
     const currentContent = tempRange.cloneContents().textContent || '';
-    const lastSpaceIndex = currentContent.lastIndexOf(' ');
-    const startIndex = lastSpaceIndex >= 0 ? lastSpaceIndex + 1 : 0;
+    
+    // Find the start of the current typed text within the entire content
+    const startIndex = currentContent.lastIndexOf(currentText);
+    if (startIndex === -1) return; // Current text not found, shouldn't happen
 
-    // Create range to replace the current word
+    // Create range to replace the current text
     const replaceRange = document.createRange();
     replaceRange.setStart(this.element, 0);
 

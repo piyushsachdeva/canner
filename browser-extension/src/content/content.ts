@@ -12,8 +12,8 @@ let lastFocusedInput: HTMLElement | null = null;
 
 // this function track focused inputs
 function trackFocusedInputs() {
-  document.addEventListener('focusin', (e) => {
-    const target = e.target as HTMLElement;
+  document.addEventListener('focusin', (_e) => {
+    const target = _e.target as HTMLElement;
     if (isValidInputElement(target)) {
       lastFocusedInput = target;
       console.log("Canner: Tracked focused input", target);
@@ -297,7 +297,7 @@ class InlineSuggestionManager {
     overlay.style.lineHeight = computedStyle.lineHeight;
 
     // Position exactly at cursor baseline for Twitter
-    let left = rect.right + 1;
+    const left = rect.right + 1;
     let top = rect.top;
 
     // Calculate baseline alignment for perfect text alignment
@@ -447,7 +447,7 @@ class InlineSuggestionManager {
   }
 }
 
-async function fetchLocalSuggestions(prefix: string): Promise<any[]> {
+async function _fetchLocalSuggestions(prefix: string): Promise<any[]> {
   return new Promise((resolve) => {
     chrome.storage.local.get(["responses"], (result) => {
       const list = result.responses || [];
@@ -633,7 +633,7 @@ function createPenButton(targetBox: HTMLElement): HTMLElement {
   penContainer.className = "social-helper-pen";
 
   // Detect platform for appropriate styling
-  const isLinkedIn =
+  const _isLinkedIn =
     window.location.hostname.includes("linkedin") ||
     document.body.className.includes("linkedin") ||
     targetBox.closest('[class*="linkedin"]') !== null;
@@ -643,7 +643,7 @@ function createPenButton(targetBox: HTMLElement): HTMLElement {
     window.location.hostname.includes("x.com") ||
     targetBox.closest("[data-testid]") !== null;
 
-  if (isLinkedIn) {
+  if (_isLinkedIn) {
     penContainer.setAttribute("data-platform", "linkedin");
   } else if (isTwitter) {
     penContainer.setAttribute("data-platform", "twitter");
@@ -878,30 +878,10 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
     </div>
   `;
 
-  // Position menu near button with smart positioning
-  const rect = button.getBoundingClientRect();
-  const menuHeight = 500; // Estimated menu height
-  const viewportHeight = window.innerHeight;
-  const spaceBelow = viewportHeight - rect.bottom;
-  const spaceAbove = rect.top;
-
-  // Show above button if not enough space below
-  if (spaceBelow < menuHeight && spaceAbove > menuHeight) {
-    menu.style.top = `${rect.top - menuHeight - 10}px`;
-  } else {
-    menu.style.top = `${rect.bottom + 5}px`;
-  }
-
-  // Ensure menu doesn't go off-screen horizontally
-  const menuWidth = 420;
-  const spaceRight = window.innerWidth - rect.left;
-
-  if (spaceRight < menuWidth) {
-    menu.style.left = `${rect.right - menuWidth}px`;
-  } else {
-    menu.style.left = `${rect.left}px`;
-  }
-
+//added first here
+  menu.style.visibility = "hidden";
+  menu.style.top = "-9999px";
+  menu.style.left = "-9999px";
   document.body.appendChild(menu);
 
   // Add theme toggle functionality
@@ -1156,6 +1136,62 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
     `;
   }
 
+    // === START: DYNAMIC POSITIONING FIX ===
+  
+  // 1. Append menu off-screen to measure its true dimensions
+// Add force reflow here:
+menu.offsetHeight;
+
+  
+  // Get its real dimensions (after it has rendered)
+  const menuRect = menu.getBoundingClientRect();
+  // Use 400 as a fallback height/width if it hasn't rendered correctly yet
+  const menuHeight = menuRect.height > 50 ? menuRect.height : 400; 
+  const menuWidth = menuRect.width > 50 ? menuRect.width : 400;
+
+  // Get button and viewport dimensions
+  const rect = button.getBoundingClientRect();
+  const viewportHeight = window.innerHeight;
+  const viewportWidth = window.innerWidth;
+  const padding = 10; // 10px padding from screen edges
+
+  // 2. Calculate ideal 'top' position
+  let top = rect.bottom + 5; // Default: below button
+
+  // Check if it goes off the bottom
+  if (top + menuHeight > viewportHeight - padding) {
+    // Try placing it above the button
+    top = rect.top - menuHeight - 5;
+  }
+
+  // Check if it *still* goes off the top (or was already off)
+  if (top < padding) {
+    // Pin it to the top of the viewport
+    top = padding;
+  }
+  
+  // 3. Calculate ideal 'left' position
+  let left = rect.left; // Default: align with button's left
+
+  // Check if it goes off the right
+  if (left + menuWidth > viewportWidth - padding) {
+    // Align to the right edge of the screen
+    left = viewportWidth - menuWidth - padding;
+  }
+
+  // Check if it goes off the left
+  if (left < padding) {
+    // Pin it to the left of the viewport
+    left = padding;
+  }
+
+  // 4. Apply final, calculated positions and make visible
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+  menu.style.visibility = "visible";
+
+  // === END: DYNAMIC POSITIONING FIX ===
+
   // Close menu when clicking outside
   setTimeout(() => {
     document.addEventListener("click", function closeMenu(e) {
@@ -1168,7 +1204,7 @@ async function showResponseMenu(targetBox: HTMLElement, button: HTMLElement) {
 }
 
 // Show create modal for new response
-function showCreateModal(targetBox: HTMLElement, button: HTMLElement, menu: HTMLElement) {
+function _showCreateModal(targetBox: HTMLElement, button: HTMLElement, menu: HTMLElement) {
   // Create modal overlay
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "sh-modal-overlay";
@@ -1335,7 +1371,7 @@ async function createResponse(data: any): Promise<void> {
 }
 
 // Show edit modal for response
-function showEditModal(response: any, targetBox: HTMLElement, button: HTMLElement, menu: HTMLElement) {
+function _showEditModal(response: any, targetBox: HTMLElement, button: HTMLElement, menu: HTMLElement) {
   // Create modal overlay
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "sh-modal-overlay";

@@ -58,18 +58,6 @@
   transform: scale(1) translateY(0);
 }
 
-/* Hover state - expand to show text */
-.social-helper-pen:hover,
-.social-helper-pen.pen-hover {
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
-  width: auto;
-  min-width: 140px;
-  border-radius: 24px;
-  padding: 8px 16px;
-  border-color: rgba(29, 161, 242, 0.2);
-  transform: scale(1.02) translateY(-2px);
-}
 
 /* Platform-specific accent colors */
 body[class*="linkedin"] .social-helper-pen:hover,
@@ -1074,6 +1062,751 @@ textarea.lh-input {
   }
 }
 
+
+
+
+.format-btn strong {
+  font-weight: 700;
+}
+
+.format-btn em {
+  font-style: italic;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+
+.format-clear {
+  color: #666;
+  border-left: 1px solid #e0e0e0;
+  margin-left: 2px;
+  padding-left: 6px;
+}
+
+.format-clear span {
+  text-decoration: line-through;
+  font-weight: 600;
+}
+
+/* Tooltip Enhancement */
+.format-btn::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-5px);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  z-index: 10001;
+}
+
+.format-btn:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+/* Active State Indicator */
+.format-btn.active {
+  background: #0a66c2;
+  color: white;
+}
+
+.format-btn.active:hover {
+  background: #084d8d;
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .canner-formatting-toolbar {
+    background: #2d2d2d;
+    border-color: #404040;
+  }
+
+  .format-btn {
+    background: #2d2d2d;
+    color: #e0e0e0;
+  }
+
+  .format-btn:hover {
+    background: #3a3a3a;
+    color: #4a9eff;
+  }
+
+  .format-btn:active {
+    background: #454545;
+  }
+
+  .format-clear {
+    border-left-color: #404040;
+    color: #999;
+  }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .canner-formatting-toolbar {
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .format-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+  }
+}
+/* ============================================
+   CANNER COMPOSE MODAL STYLES
+   Approach B: Rich Text Editor with Preview
+   ============================================ */
+
+/* Modal wrapper - covers entire screen */
+.canner-compose-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: cannerModalFadeIn 0.2s ease-out;
+}
+
+@keyframes cannerModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.canner-compose-modal.canner-modal-closing {
+  animation: cannerModalFadeOut 0.2s ease-out;
+}
+
+@keyframes cannerModalFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Dark overlay background */
+.canner-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* Main modal container */
+.canner-modal-container {
+  position: relative;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2), 
+              0 8px 16px rgba(0, 0, 0, 0.1);
+  width: 920px;
+  max-width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  animation: cannerModalSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+}
+
+@keyframes cannerModalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.93);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.canner-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 28px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+}
+
+.canner-modal-header h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.canner-modal-close {
+  background: none;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 22px;
+  color: #6b7280;
+  transition: all 0.2s ease;
+}
+
+.canner-modal-close:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+  transform: scale(1.05);
+}
+
+.canner-modal-close:active {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   TOOLBAR
+   ============================================ */
+
+.canner-modal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 28px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  flex-wrap: wrap;
+}
+
+.canner-format-btn {
+  background: #ffffff;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  transition: all 0.15s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.canner-format-btn:hover {
+  background: #f3f4f6;
+  border-color: #0a66c2;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(10, 102, 194, 0.1);
+}
+
+.canner-format-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.canner-toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: #d1d5db;
+  margin: 0 6px;
+}
+
+.canner-save-draft-btn {
+  background: #f3f4f6;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px 14px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  transition: all 0.15s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.canner-save-draft-btn:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+/* ============================================
+   BODY - Split Pane Layout
+   ============================================ */
+
+.canner-modal-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  flex: 1;
+  overflow: hidden;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Editor Pane (Left) */
+.canner-editor-pane {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 20px 24px 28px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  overflow-y: auto;
+}
+
+.canner-pane-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.canner-format-editor {
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 18px;
+  min-height: 340px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #1f2937;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.canner-format-editor:focus {
+  border-color: #0a66c2;
+  box-shadow: 0 0 0 3px rgba(10, 102, 194, 0.1);
+}
+
+.canner-format-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.canner-editor-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Preview Pane (Right) */
+.canner-preview-pane {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 28px 24px 20px;
+  background: #f9fafb;
+  overflow-y: auto;
+}
+
+.canner-linkedin-preview-content {
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 18px;
+  min-height: 340px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #4b5563;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #ffffff;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto;
+}
+
+.canner-preview-placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.canner-character-count {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #6b7280;
+  text-align: right;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.canner-character-count span {
+  font-weight: 600;
+  color: #374151;
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+
+.canner-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 28px;
+  background: #ffffff;
+}
+
+.canner-btn-secondary,
+.canner-btn-primary {
+  padding: 11px 24px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.canner-btn-secondary {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1.5px solid #d1d5db;
+}
+
+.canner-btn-secondary:hover {
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #9ca3af;
+}
+
+.canner-btn-primary {
+  background: linear-gradient(135deg, #0a66c2 0%, #004182 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(10, 102, 194, 0.25);
+}
+
+.canner-btn-primary:hover {
+  background: linear-gradient(135deg, #004182 0%, #002e5f 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(10, 102, 194, 0.35);
+}
+
+.canner-btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(10, 102, 194, 0.25);
+}
+
+/* ============================================
+   COMPOSE BUTTON (Trigger)
+   ============================================ */
+
+.social-helper-compose {
+  position: fixed;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
+  user-select: none;
+}
+
+.social-helper-compose.visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+}
+
+.social-helper-compose:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.5);
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.social-helper-compose:active {
+  transform: scale(1.05);
+}
+
+.compose-icon {
+  font-size: 18px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+  line-height: 1;
+}
+
+.compose-tooltip {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Tooltip arrow */
+.compose-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 5px solid rgba(0, 0, 0, 0.85);
+}
+
+.social-helper-compose:hover .compose-tooltip {
+  opacity: 1;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+/* Tablets and smaller */
+@media (max-width: 1024px) {
+  .canner-modal-container {
+    width: 90vw;
+    max-height: 90vh;
+  }
+  
+  .canner-modal-body {
+    grid-template-columns: 1fr;
+  }
+  
+  .canner-editor-pane {
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .canner-preview-pane {
+    display: none; /* Hide preview on smaller screens to save space */
+  }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .canner-modal-container {
+    width: 96vw;
+    max-height: 94vh;
+    border-radius: 12px;
+  }
+  
+  .canner-modal-header {
+    padding: 18px 20px;
+  }
+  
+  .canner-modal-header h3 {
+    font-size: 17px;
+  }
+  
+  .canner-modal-toolbar {
+    padding: 12px 20px;
+    gap: 4px;
+  }
+  
+  .canner-format-btn {
+    padding: 6px 10px;
+    min-width: 34px;
+    height: 32px;
+    font-size: 14px;
+  }
+  
+  .canner-editor-pane {
+    padding: 18px 20px;
+  }
+  
+  .canner-format-editor {
+    min-height: 280px;
+    font-size: 14px;
+  }
+  
+  .canner-modal-footer {
+    padding: 16px 20px;
+  }
+  
+  .canner-btn-secondary,
+  .canner-btn-primary {
+    padding: 10px 18px;
+    font-size: 14px;
+  }
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+
+.canner-format-editor::-webkit-scrollbar,
+.canner-linkedin-preview-content::-webkit-scrollbar,
+.canner-editor-pane::-webkit-scrollbar,
+.canner-preview-pane::-webkit-scrollbar {
+  width: 8px;
+}
+
+.canner-format-editor::-webkit-scrollbar-track,
+.canner-linkedin-preview-content::-webkit-scrollbar-track,
+.canner-editor-pane::-webkit-scrollbar-track,
+.canner-preview-pane::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.canner-format-editor::-webkit-scrollbar-thumb,
+.canner-linkedin-preview-content::-webkit-scrollbar-thumb,
+.canner-editor-pane::-webkit-scrollbar-thumb,
+.canner-preview-pane::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.canner-format-editor::-webkit-scrollbar-thumb:hover,
+.canner-linkedin-preview-content::-webkit-scrollbar-thumb:hover,
+.canner-editor-pane::-webkit-scrollbar-thumb:hover,
+.canner-preview-pane::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+/* Focus visible for keyboard navigation */
+.canner-format-btn:focus-visible,
+.canner-save-draft-btn:focus-visible,
+.canner-btn-secondary:focus-visible,
+.canner-btn-primary:focus-visible,
+.canner-modal-close:focus-visible {
+  outline: 2px solid #0a66c2;
+  outline-offset: 2px;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .canner-compose-modal,
+  .canner-modal-container,
+  .canner-format-btn,
+  .canner-btn-secondary,
+  .canner-btn-primary,
+  .social-helper-compose {
+    animation: none;
+    transition: none;
+  }
+}
+
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+  .canner-compose-modal {
+    display: none;
+  }
+  
+  .social-helper-compose {
+    display: none;
+  }
+}
+
+/* ============================================
+   ANIMATIONS & TRANSITIONS
+   ============================================ */
+
+/* Subtle pulse for compose button when first shown */
+@keyframes cannerComposePulse {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.5);
+  }
+}
+
+.social-helper-compose.visible {
+  animation: cannerComposePulse 2s ease-in-out 1;
+}
+
+/* Button press effect */
+.canner-format-btn:active,
+.canner-save-draft-btn:active {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   HIGH CONTRAST MODE
+   ============================================ */
+
+@media (prefers-contrast: high) {
+  .canner-modal-container {
+    border: 2px solid #000;
+  }
+  
+  .canner-format-btn,
+  .canner-save-draft-btn,
+  .canner-btn-secondary {
+    border-width: 2px;
+  }
+  
+  .canner-format-editor,
+  .canner-linkedin-preview-content {
+    border-width: 3px;
+  }
+}
+=======
 @keyframes scaleIn {
   from {
     opacity: 0;
@@ -1259,3 +1992,4 @@ textarea.lh-input {
   transform: none;
   box-shadow: none;
 }
+

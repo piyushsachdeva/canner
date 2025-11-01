@@ -18,7 +18,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code (exclude wait-for-postgres.py as it's no longer needed)
-COPY app.py database.py models.py ./
+COPY app.py database.py models.py auth.py middleware.py ./
 
 # Create a non-root user for security
 RUN useradd -m appuser && chown -R appuser:appuser /app

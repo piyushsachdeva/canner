@@ -7,6 +7,16 @@ export interface Response {
   title: string;
   content: string;
   tags?: string[] | string;
+  user_id?: string;
+  created_at?: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  provider: string;
+  avatar_url?: string;
   created_at?: string;
 }
 
@@ -14,7 +24,9 @@ export interface Response {
 export async function getResponses(): Promise<Response[]> {
   try {
     // Try backend
-    const response = await fetch(`${API_URL}/api/responses`);
+    const response = await fetch(`${API_URL}/api/responses`, {
+      credentials: 'include'
+    });
     if (response.ok) {
       const data = await response.json();
       // Cache in Chrome storage
@@ -44,6 +56,7 @@ export async function updateResponse(id: string, data: Partial<Response>): Promi
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+      credentials: 'include'
     });
 
     if (result.ok) {
@@ -81,6 +94,7 @@ export async function saveResponse(response: Response): Promise<Response> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(response),
+      credentials: 'include'
     });
 
     if (result.ok) {
@@ -125,6 +139,7 @@ export async function deleteResponse(id: string): Promise<void> {
     // Try backend
     const result = await fetch(`${API_URL}/api/responses/${id}`, {
       method: "DELETE",
+      credentials: 'include'
     });
 
     if (result.ok) {
@@ -148,4 +163,40 @@ export async function deleteResponse(id: string): Promise<void> {
       });
     });
   });
+}
+
+// Authentication functions
+export async function getCurrentUser(): Promise<User | null> {
+  try {
+    console.log('getCurrentUser: Making request to', `${API_URL}/api/auth/user`);
+    const response = await fetch(`${API_URL}/api/auth/user`, {
+      credentials: 'include'
+    });
+    console.log('getCurrentUser: Response status:', response.status);
+    console.log('getCurrentUser: Response headers:', response.headers);
+    
+    if (response.ok) {
+      const user = await response.json();
+      console.log('getCurrentUser: Success, user:', user);
+      return user;
+    } else {
+      const errorText = await response.text();
+      console.log('getCurrentUser: Error response:', errorText);
+    }
+  } catch (error) {
+    console.log("getCurrentUser: Backend not available for user info", error);
+  }
+  
+  return null;
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${API_URL}/api/auth/logout`, {
+      method: "GET",
+      credentials: 'include'
+    });
+  } catch (error) {
+    console.log("Backend not available for logout");
+  }
 }

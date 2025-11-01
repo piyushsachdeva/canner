@@ -5,12 +5,13 @@ Database service for managing responses using PostgreSQL
 import json
 import logging
 import os
+import uuid
 from typing import List, Optional
 
 import psycopg2
 import psycopg2.extras
 
-from models import Response
+from models import Response, User
 
 
 class DatabaseService:
@@ -67,22 +68,34 @@ class DatabaseService:
         logging.info("✅ Database schema verified")
 
     @staticmethod
-    def get_all_responses(search: Optional[str] = None) -> List[Response]:
-        """Get all responses, optionally filtered."""
+    def get_all_responses(search: Optional[str] = None, user_id: Optional[str] = None) -> List[Response]:
+        """Get all responses, optionally filtered by search and user.
+        
+        Args:
+            search: Optional search term to filter responses
+            user_id: If provided, only returns responses belonging to this user
+        """
         conn = DatabaseService.get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+        query = "SELECT * FROM responses"
+        params = []
+        conditions = []
+        
         if search:
-            # PostgreSQL with ILIKE for case-insensitive search
-            query = """
-                SELECT * FROM responses
-                WHERE title ILIKE %s OR content ILIKE %s OR tags::text ILIKE %s
-                ORDER BY created_at DESC
-            """
+            conditions.append("(title ILIKE %s OR content ILIKE %s OR tags::text ILIKE %s)")
             search_term = f"%{search}%"
-            cursor.execute(query, (search_term, search_term, search_term))
-        else:
-            cursor.execute("SELECT * FROM responses ORDER BY created_at DESC")
+            params.extend([search_term, search_term, search_term])
+            
+        if user_id is not None:
+            conditions.append("user_id = %s")
+            params.append(user_id)
+            
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+            
+        query += " ORDER BY created_at DESC"
+        cursor.execute(query, params)
 
         rows = cursor.fetchall()
         cursor.close()
@@ -108,21 +121,39 @@ class DatabaseService:
         return Response.from_db_row(row)
 
     @staticmethod
-    def create_response(title: str, content: str, tags: List[str]) -> Response:
+    def create_response(title: str, content: str, tags: List[str], user_id: Optional[str] = None) -> Response:
         """Create a new response.
         
+        Args:
+            title: Title of the response
+            content: Content of the response
+            tags: List of tags for the response
+            user_id: Optional user ID to associate with the response
+            
+        Returns:
+            The created Response object
+            
         Note: PostgreSQL auto-generates UUID, no need to pass response_id
         """
         conn = DatabaseService.get_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # PostgreSQL RETURNING clause gets the created record in one query
-        query = """
-            INSERT INTO responses (title, content, tags)
-            VALUES (%s, %s, %s)
-            RETURNING *
-        """
-        cursor.execute(query, (title, content, json.dumps(tags)))
+        if user_id:
+            query = """
+                INSERT INTO responses (title, content, tags, user_id)
+                VALUES (%s, %s, %s, %s)
+                RETURNING *
+            """
+            cursor.execute(query, (title, content, json.dumps(tags), user_id))
+        else:
+            query = """
+                INSERT INTO responses (title, content, tags)
+                VALUES (%s, %s, %s)
+                RETURNING *
+            """
+            cursor.execute(query, (title, content, json.dumps(tags)))
+            
         row = cursor.fetchone()
         
         cursor.close()
@@ -197,3 +228,68 @@ class DatabaseService:
         conn.close()
 
         return True
+    
+    @staticmethod
+    def get_user_by_id(user_id: str) -> Optional[User]:
+        """Get a user by their ID."""
+        conn = DatabaseService.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if row is None:
+            return None
+        
+        return User.from_db_row(row)
+
+    @staticmethod
+    def get_user_by_email(email: str) -> Optional[User]:
+        """Get a user by email."""
+        conn = DatabaseService.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if row is None:
+            return None
+        
+        return User.from_db_row(row)
+    
+    @staticmethod
+    def get_user_by_provider_id(provider: str, provider_id: str) -> Optional[User]:
+        """Get a user by provider and provider_id."""
+        conn = DatabaseService.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM users WHERE provider = %s AND provider_id = %s", 
+                      (provider, provider_id))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if row is None:
+            return None
+        
+        return User.from_db_row(row)
+    
+    @staticmethod
+    def create_user(email: str, name: str, provider: str, 
+                   provider_id: str, avatar_url: Optional[str] = None) -> User:
+        """Create a new user."""
+        conn = DatabaseService.get_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        user_id = str(uuid.uuid4())
+        
+        cursor.execute(
+            "INSERT INTO users (id, email, name, provider, provider_id, avatar_url) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
+            (user_id, email, name, provider, provider_id, avatar_url)
+        )
+        row = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return User.from_db_row(row)

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Auth</title>
+</head>
+<body>
+    <h1>Debug Authentication</h1>
+    <button id="testAuth">Test Auth</button>
+    <div id="result"></div>
+    
+    <script>
+        document.getElementById('testAuth').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/auth/user', {
+                    credentials: 'include',
+                    method: 'GET'
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+                
+                if (response.ok) {
+                    const user = await response.json();
+                    resultDiv.innerHTML = `<pre>SUCCESS: ${JSON.stringify(user, null, 2)}</pre>`;
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `<pre>ERROR ${response.status}: ${error}</pre>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<pre>FETCH ERROR: ${error.message}</pre>`;
+                console.error('Fetch error:', error);
+            }
+        });
+    </script>
+</body>
+</html>
